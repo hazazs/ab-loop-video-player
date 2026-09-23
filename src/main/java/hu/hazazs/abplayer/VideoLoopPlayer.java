@@ -572,24 +572,30 @@ public class VideoLoopPlayer extends Application {
     private void togglePlayPause() {
         if (mediaPlayer == null) return;
 
-        MediaPlayer.Status status = mediaPlayer.getStatus();
-        if (status == MediaPlayer.Status.PLAYING) {
-            mediaPlayer.pause();
-            exactPausedSeekMillis = Math.round(mediaPlayer.getCurrentTime().toMillis());
-            return;
-        }
-
+        // JavaFX may still report PLAYING after end-of-media, so the real-end
+        // check must happen before the normal PLAYING -> pause branch.
         if (atVideoEnd || isAtActualVideoEnd()) {
             bypassLoopUntilEnd = false;
             atVideoEnd = false;
             exactPausedSeekMillis = null;
 
-            Duration start = Duration.ZERO;
             mediaPlayer.stop();
-            mediaPlayer.seek(start);
             seekSlider.setValue(0);
-            currentTimeLabel.setText(formatDuration(start));
-            mediaPlayer.play();
+            currentTimeLabel.setText(formatDuration(Duration.ZERO));
+
+            // stop() resets playback to startTime; play() then restarts from 0.
+            Platform.runLater(() -> {
+                if (mediaPlayer != null) {
+                    mediaPlayer.play();
+                }
+            });
+            return;
+        }
+
+        MediaPlayer.Status status = mediaPlayer.getStatus();
+        if (status == MediaPlayer.Status.PLAYING) {
+            mediaPlayer.pause();
+            exactPausedSeekMillis = Math.round(mediaPlayer.getCurrentTime().toMillis());
             return;
         }
 
@@ -598,14 +604,9 @@ public class VideoLoopPlayer extends Application {
             exactPausedSeekMillis = null;
         }
 
-        if (!bypassLoopUntilEnd
-                && pointB.greaterThan(pointA)
-                && mediaPlayer.getCurrentTime().greaterThan(pointB)) {
-            mediaPlayer.seek(pointA);
-            seekSlider.setValue(pointA.toMillis());
-            currentTimeLabel.setText(formatDuration(pointA));
-        }
-
+        // Do not test B here. If playback resumes exactly at B, it must first
+        // advance beyond B; the current-time listener performs the B -> A jump
+        // on the first update strictly after B.
         mediaPlayer.play();
     }
 
