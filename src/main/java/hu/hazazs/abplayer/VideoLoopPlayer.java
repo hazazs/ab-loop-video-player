@@ -43,7 +43,6 @@ public class VideoLoopPlayer extends Application {
     private final Slider volumeSlider = new Slider(0, 100, 75);
     private final Label currentTimeLabel = new Label("00:00:00.000");
     private final Label totalTimeLabel = new Label("00:00:00.000");
-    private final Label fileLabel = new Label("No video loaded");
 
     private final TextField aField = new TextField("00:00:00.000");
     private final TextField bField = new TextField("00:00:00.000");
@@ -70,6 +69,7 @@ public class VideoLoopPlayer extends Application {
         StackPane videoPane = new StackPane(mediaView);
         videoPane.setStyle("-fx-background-color: black;");
         videoPane.setMinHeight(360);
+        videoPane.setFocusTraversable(true);
 
         mediaView.setPreserveRatio(true);
         mediaView.fitWidthProperty().bind(videoPane.widthProperty());
@@ -87,20 +87,6 @@ public class VideoLoopPlayer extends Application {
             }
         });
         root.setCenter(videoPane);
-
-        Button openButton = new Button("Open");
-        configureStaticButton(openButton);
-        openButton.setOnAction(e -> openVideo(stage));
-
-        fileLabel.setStyle("-fx-text-fill: #d6d9df;");
-        fileLabel.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(fileLabel, Priority.ALWAYS);
-
-        HBox topBar = new HBox(12, openButton, fileLabel);
-        topBar.setAlignment(Pos.CENTER_LEFT);
-        topBar.setPadding(new Insets(10, 12, 8, 12));
-        topBar.setStyle("-fx-background-color: #22252b;");
-        root.setTop(topBar);
 
         seekSlider.setDisable(true);
         seekSlider.setMaxWidth(Double.MAX_VALUE);
@@ -204,7 +190,10 @@ public class VideoLoopPlayer extends Application {
         root.layout();
         configureStaticSliderAppearance(seekSlider);
         configureStaticSliderAppearance(volumeSlider);
-        Platform.runLater(() -> stage.setOpacity(1));
+        Platform.runLater(() -> {
+            stage.setOpacity(1);
+            videoPane.requestFocus();
+        });
 
         stage.setOnCloseRequest(e -> disposePlayer());
     }
@@ -238,7 +227,6 @@ public class VideoLoopPlayer extends Application {
             mediaView.setMediaPlayer(mediaPlayer);
             mediaPlayer.setVolume(volumeSlider.getValue() / 100.0);
 
-            fileLabel.setText(file.getName());
             seekSlider.setDisable(true);
             aMarker.setVisible(false);
             bMarker.setVisible(false);
