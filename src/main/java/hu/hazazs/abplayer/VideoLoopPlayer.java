@@ -37,8 +37,8 @@ public class VideoLoopPlayer extends Application {
 
     private final Slider seekSlider = new Slider(0, 1, 0);
     private final Pane seekMarkerOverlay = new Pane();
-    private final VBox aMarker = createSeekMarker("A", "#ffb300");
-    private final VBox bMarker = createSeekMarker("B", "#00c853");
+    private final VBox aMarker = createSeekMarker("A");
+    private final VBox bMarker = createSeekMarker("B");
     private final Slider volumeSlider = new Slider(0, 100, 75);
     private final Label currentTimeLabel = new Label("00:00:00.000");
     private final Label totalTimeLabel = new Label("00:00:00.000");
@@ -80,6 +80,7 @@ public class VideoLoopPlayer extends Application {
         root.setCenter(videoPane);
 
         Button openButton = new Button("Open");
+        configureStaticButton(openButton);
         openButton.setOnAction(e -> openVideo(stage));
 
         fileLabel.setStyle("-fx-text-fill: #d6d9df;");
@@ -103,6 +104,9 @@ public class VideoLoopPlayer extends Application {
         StackPane seekBarPane = new StackPane(seekSlider, seekMarkerOverlay);
         seekBarPane.setMinWidth(0);
         seekBarPane.setMaxWidth(Double.MAX_VALUE);
+        seekBarPane.setMinHeight(34);
+        seekBarPane.setPrefHeight(34);
+        seekBarPane.setMaxHeight(34);
         HBox.setHgrow(seekBarPane, Priority.ALWAYS);
         seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> updateLoopMarkers());
         seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> updateLoopMarkers());
@@ -134,6 +138,11 @@ public class VideoLoopPlayer extends Application {
         Button clearAButton = new Button("Clear");
         Button setBButton = new Button("Set");
         Button clearBButton = new Button("Clear");
+
+        configureStaticButton(setAButton);
+        configureStaticButton(clearAButton);
+        configureStaticButton(setBButton);
+        configureStaticButton(clearBButton);
 
         setAButton.setOnAction(e -> setPointAFromCurrent());
         clearAButton.setOnAction(e -> clearPointA());
@@ -345,10 +354,26 @@ public class VideoLoopPlayer extends Application {
         field.setMaxWidth(width);
     }
 
-    private VBox createSeekMarker(String text, String color) {
+    private void configureStaticButton(Button button) {
+        button.setFocusTraversable(false);
+        button.setStyle(
+                "-fx-background-color: #f4f4f4;" +
+                "-fx-text-fill: #202020;" +
+                "-fx-background-insets: 0;" +
+                "-fx-background-radius: 3;" +
+                "-fx-border-color: #b8b8b8;" +
+                "-fx-border-width: 1;" +
+                "-fx-border-radius: 3;" +
+                "-fx-effect: null;" +
+                "-fx-focus-color: transparent;" +
+                "-fx-faint-focus-color: transparent;"
+        );
+    }
+
+    private VBox createSeekMarker(String text) {
         Label label = new Label(text);
         label.setStyle(
-                "-fx-text-fill: white;" +
+                "-fx-text-fill: #00c853;" +
                 "-fx-font-size: 9px;" +
                 "-fx-font-weight: bold;" +
                 "-fx-background-color: rgba(0, 0, 0, 0.75);" +
@@ -356,12 +381,12 @@ public class VideoLoopPlayer extends Application {
         );
 
         Region line = new Region();
-        line.setMinSize(2, 11);
-        line.setPrefSize(2, 11);
-        line.setMaxSize(2, 11);
-        line.setStyle("-fx-background-color: " + color + ";");
+        line.setMinSize(2, 22);
+        line.setPrefSize(2, 22);
+        line.setMaxSize(2, 22);
+        line.setStyle("-fx-background-color: #00c853;");
 
-        VBox marker = new VBox(0, label, line);
+        VBox marker = new VBox(0, line, label);
         marker.setAlignment(Pos.TOP_CENTER);
         marker.setMouseTransparent(true);
         return marker;
