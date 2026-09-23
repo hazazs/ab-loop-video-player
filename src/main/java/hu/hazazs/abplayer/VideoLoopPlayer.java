@@ -135,12 +135,6 @@ public class VideoLoopPlayer extends Application {
             }
         });
 
-        Region playbackSpacer = new Region();
-        HBox.setHgrow(playbackSpacer, Priority.ALWAYS);
-
-        HBox playbackRow = new HBox(8, playbackSpacer, volumeSlider);
-        playbackRow.setAlignment(Pos.CENTER_LEFT);
-
         Text widestTimestamp = new Text("88:88:88.888");
         widestTimestamp.setFont(aField.getFont());
         double timestampFieldWidth = Math.ceil(widestTimestamp.getLayoutBounds().getWidth()) + 20;
@@ -148,18 +142,11 @@ public class VideoLoopPlayer extends Application {
         configureTimestampField(aField, timestampFieldWidth);
         configureTimestampField(bField, timestampFieldWidth);
 
-        Button clearAButton = new Button("Clear");
-        Button clearBButton = new Button("Clear");
-
         configureStaticButton(setAButton);
-        configureStaticButton(clearAButton);
         configureStaticButton(setBButton);
-        configureStaticButton(clearBButton);
 
         setAButton.setOnAction(e -> setPointAFromCurrent());
-        clearAButton.setOnAction(e -> clearPointA());
         setBButton.setOnAction(e -> setPointBFromCurrent());
-        clearBButton.setOnAction(e -> clearPointB());
 
         setAButton.setDisable(true);
         setBButton.setDisable(true);
@@ -176,19 +163,16 @@ public class VideoLoopPlayer extends Application {
             if (was && !is) applyTypedPoints();
         });
 
-        GridPane loopGrid = new GridPane();
-        loopGrid.setHgap(8);
-        loopGrid.setVgap(8);
-        loopGrid.add(new Label("A"), 0, 0);
-        loopGrid.add(aField, 1, 0);
-        loopGrid.add(setAButton, 2, 0);
-        loopGrid.add(clearAButton, 3, 0);
-        loopGrid.add(new Label("B"), 0, 1);
-        loopGrid.add(bField, 1, 1);
-        loopGrid.add(setBButton, 2, 1);
-        loopGrid.add(clearBButton, 3, 1);
+        Region aRowSpacer = new Region();
+        HBox.setHgrow(aRowSpacer, Priority.ALWAYS);
 
-        VBox controls = new VBox(10, timeRow, playbackRow, loopGrid);
+        HBox aRow = new HBox(8, new Label("A"), aField, setAButton, aRowSpacer, volumeSlider);
+        aRow.setAlignment(Pos.CENTER_LEFT);
+
+        HBox bRow = new HBox(8, new Label("B"), bField, setBButton);
+        bRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox controls = new VBox(8, timeRow, aRow, bRow);
         controls.setPadding(new Insets(10, 12, 12, 12));
         controls.setStyle(
                 "-fx-background-color: #22252b;" +
@@ -874,22 +858,6 @@ public class VideoLoopPlayer extends Application {
             seekSlider.setValue(pointA.toMillis());
             currentTimeLabel.setText(formatDuration(pointA));
         }
-    }
-
-    private void clearPointA() {
-        if (mediaPlayer == null) return;
-
-        pointA = Duration.ZERO;
-        aField.setText(formatDuration(pointA));
-        validateLoopRange();
-    }
-
-    private void clearPointB() {
-        if (mediaPlayer == null) return;
-
-        pointB = mediaDuration;
-        bField.setText(formatDuration(pointB));
-        validateLoopRange();
     }
 
     private void showMediaError(Throwable error) {
