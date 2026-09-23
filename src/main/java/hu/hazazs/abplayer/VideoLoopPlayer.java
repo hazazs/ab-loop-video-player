@@ -7,16 +7,16 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.image.Image;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.media.MediaView;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -33,24 +33,13 @@ public class VideoLoopPlayer extends Application {
 
     private static final double FRAME_STEP_SECONDS = 1.0 / 30.0;
 
-    private static final double SEEK_BAR_HEIGHT = 34;
-    private static final double SEEK_TRACK_CENTER_Y = 11;
-    private static final double SEEK_TRACK_HEIGHT = 4;
-    private static final double SEEK_THUMB_SIZE = 12;
-    private static final double SEEK_MARKER_LINE_HEIGHT = 22;
-
     private MediaPlayer mediaPlayer;
     private final MediaView mediaView = new MediaView();
 
-    private final Pane seekBarPane = new Pane();
-    private final Region seekInactiveTrack = new Region();
-    private final Region seekActiveTrack = new Region();
-    private final Region seekThumb = new Region();
-    private final Region aMarkerLine = createMarkerLine();
-    private final Region bMarkerLine = createMarkerLine();
-    private final Label aMarkerLabel = createMarkerLabel("A");
-    private final Label bMarkerLabel = createMarkerLabel("B");
-
+    private final Slider seekSlider = new Slider(0, 1, 0);
+    private final Pane seekMarkerOverlay = new Pane();
+    private final VBox aMarker = createSeekMarker("A");
+    private final VBox bMarker = createSeekMarker("B");
     private final Slider volumeSlider = new Slider(0, 100, 75);
     private final Label currentTimeLabel = new Label("00:00:00.000");
     private final Label totalTimeLabel = new Label("00:00:00.000");
@@ -59,15 +48,12 @@ public class VideoLoopPlayer extends Application {
     private final TextField aField = new TextField("00:00:00.000");
     private final TextField bField = new TextField("00:00:00.000");
 
-    private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
-
     private Duration pointA = Duration.ZERO;
     private Duration pointB = Duration.ZERO;
     private Duration mediaDuration = Duration.ZERO;
-
     private boolean userSeeking;
-    private double pendingSeekMillis;
-    private Tooltip seekTooltip;
+
+    private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
 
     @Override
     public void start(Stage stage) {
@@ -116,14 +102,28 @@ public class VideoLoopPlayer extends Application {
         topBar.setStyle("-fx-background-color: #22252b;");
         root.setTop(topBar);
 
-        configureSeekBar();
+        seekSlider.setDisable(true);
+        seekSlider.setMaxWidth(Double.MAX_VALUE);
+
+        seekMarkerOverlay.setMouseTransparent(true);
+        seekMarkerOverlay.getChildren().addAll(aMarker, bMarker);
+        aMarker.setVisible(false);
+        bMarker.setVisible(false);
+
+        StackPane seekBarPane = new StackPane(seekSlider, seekMarkerOverlay);
+        seekBarPane.setMinWidth(0);
+        seekBarPane.setMaxWidth(Double.MAX_VALUE);
+        seekBarPane.setMinHeight(34);
+        seekBarPane.setPrefHeight(34);
+        seekBarPane.setMaxHeight(34);
+        HBox.setHgrow(seekBarPane, Priority.ALWAYS);
+        seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> updateLoopMarkers());
+        seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> updateLoopMarkers());
 
         HBox timeRow = new HBox(8, currentTimeLabel, seekBarPane, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
-        HBox.setHgrow(seekBarPane, Priority.ALWAYS);
 
         volumeSlider.setPrefWidth(120);
-        volumeSlider.setFocusTraversable(false);
         volumeSlider.valueProperty().addListener((obs, oldV, newV) -> {
             if (mediaPlayer != null) {
                 mediaPlayer.setVolume(newV.doubleValue() / 100.0);
@@ -190,90 +190,23 @@ public class VideoLoopPlayer extends Application {
         Scene scene = new Scene(root, 1000, 700, Color.BLACK);
         scene.addEventFilter(KeyEvent.KEY_PRESSED, this::handleKeyboard);
         scene.addEventFilter(ScrollEvent.SCROLL, this::handleVolumeScroll);
-
         stage.setScene(scene);
         stage.setMinWidth(760);
         stage.setMinHeight(560);
 
+        // Show the already-maximized, already-black scene without a white startup flash.
         stage.setOpacity(0);
         stage.setMaximized(true);
         stage.show();
-
         root.applyCss();
         root.layout();
-
-        configureVolumeSliderAppearance();
-        layoutSeekBar();
-
         Platform.runLater(() -> stage.setOpacity(1));
 
         stage.setOnCloseRequest(e -> disposePlayer());
     }
 
-    private void configureSeekBar() {
-        seekBarPane.setMinWidth(0);
-        seekBarPane.setMaxWidth(Double.MAX_VALUE);
-        seekBarPane.setMinHeight(SEEK_BAR_HEIGHT);
-        seekBarPane.setPrefHeight(SEEK_BAR_HEIGHT);
-        seekBarPane.setMaxHeight(SEEK_BAR_HEIGHT);
-
-        seekInactiveTrack.setMouseTransparent(true);
-        seekInactiveTrack.setStyle(
-                "-fx-background-color: #777777;" +
-                "-fx-border-color: black;" +
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 2;" +
-                "-fx-border-radius: 2;"
-        );
-
-        seekActiveTrack.setMouseTransparent(true);
-        seekActiveTrack.setStyle(
-                "-fx-background-color: #d0d0d0;" +
-                "-fx-border-color: black;" +
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 2;" +
-                "-fx-border-radius: 2;"
-        );
-
-        seekThumb.setMouseTransparent(true);
-        seekThumb.setMinSize(SEEK_THUMB_SIZE, SEEK_THUMB_SIZE);
-        seekThumb.setPrefSize(SEEK_THUMB_SIZE, SEEK_THUMB_SIZE);
-        seekThumb.setMaxSize(SEEK_THUMB_SIZE, SEEK_THUMB_SIZE);
-        seekThumb.setStyle(
-                "-fx-background-color: #f4f4f4;" +
-                "-fx-border-color: black;" +
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 20;" +
-                "-fx-border-radius: 20;"
-        );
-
-        aMarkerLine.setMouseTransparent(true);
-        bMarkerLine.setMouseTransparent(true);
-        aMarkerLabel.setMouseTransparent(true);
-        bMarkerLabel.setMouseTransparent(true);
-
-        seekBarPane.getChildren().addAll(
-                seekInactiveTrack,
-                seekActiveTrack,
-                seekThumb,
-                aMarkerLine,
-                bMarkerLine,
-                aMarkerLabel,
-                bMarkerLabel
-        );
-
-        seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> layoutSeekBar());
-        seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> layoutSeekBar());
-
-        setSeekVisualsVisible(false);
-    }
-
     private void styleLabels(Pane pane) {
-        pane.lookupAll(".label").forEach(n -> {
-            if (n != aMarkerLabel && n != bMarkerLabel) {
-                n.setStyle("-fx-text-fill: #d6d9df;");
-            }
-        });
+        pane.lookupAll(".label").forEach(n -> n.setStyle("-fx-text-fill: #d6d9df;"));
     }
 
     private void openVideo(Stage stage) {
@@ -295,16 +228,6 @@ public class VideoLoopPlayer extends Application {
 
         disposePlayer();
 
-        mediaDuration = Duration.ZERO;
-        pointA = Duration.ZERO;
-        pointB = Duration.ZERO;
-        pendingSeekMillis = 0;
-        currentTimeLabel.setText("00:00:00.000");
-        totalTimeLabel.setText("00:00:00.000");
-        aField.setText("00:00:00.000");
-        bField.setText("00:00:00.000");
-        setSeekVisualsVisible(false);
-
         try {
             Media media = new Media(file.toURI().toString());
             mediaPlayer = new MediaPlayer(media);
@@ -312,28 +235,30 @@ public class VideoLoopPlayer extends Application {
             mediaPlayer.setVolume(volumeSlider.getValue() / 100.0);
 
             fileLabel.setText(file.getName());
+            seekSlider.setDisable(true);
+            aMarker.setVisible(false);
+            bMarker.setVisible(false);
 
             mediaPlayer.setOnReady(() -> {
                 mediaDuration = mediaPlayer.getTotalDuration();
                 pointA = Duration.ZERO;
                 pointB = mediaDuration;
-                pendingSeekMillis = pointA.toMillis();
-
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
                 totalTimeLabel.setText(formatDuration(mediaDuration));
-
-                setSeekVisualsVisible(true);
-                layoutSeekBar();
+                seekSlider.setMin(0);
+                seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
+                seekSlider.setValue(0);
+                seekSlider.setDisable(false);
+                updateLoopMarkers();
                 mediaPlayer.play();
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
-                currentTimeLabel.setText(formatDuration(newTime));
-
                 if (!userSeeking) {
-                    layoutSeekBar();
+                    seekSlider.setValue(newTime.toMillis());
                 }
+                currentTimeLabel.setText(formatDuration(newTime));
 
                 if (pointB.greaterThan(pointA)
                         && newTime.greaterThanOrEqualTo(pointB)) {
@@ -360,184 +285,76 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void installSeekBehavior() {
-        seekTooltip = new Tooltip("00:00:00.000");
+        Tooltip seekTooltip = new Tooltip("00:00:00.000");
         seekTooltip.setAutoHide(false);
 
-        seekBarPane.setOnMouseEntered(e -> {
-            if (!userSeeking && isMediaReady()) {
-                showSeekTooltip(e.getScreenX(), e.getScreenY(), fullTimelineTimeAt(e.getX()));
+        seekSlider.setOnMouseEntered(e -> {
+            if (!userSeeking) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
             }
         });
 
-        seekBarPane.setOnMouseMoved(e -> {
-            if (!userSeeking && isMediaReady()) {
-                showSeekTooltip(e.getScreenX(), e.getScreenY(), fullTimelineTimeAt(e.getX()));
+        seekSlider.setOnMouseMoved(e -> {
+            if (!userSeeking) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
             }
         });
 
-        seekBarPane.setOnMouseExited(e -> {
+        seekSlider.setOnMouseExited(e -> {
             if (!userSeeking) {
                 seekTooltip.hide();
             }
         });
 
-        seekBarPane.setOnMousePressed(e -> {
-            if (e.getButton() != MouseButton.PRIMARY || !isMediaReady()) return;
-
-            double aX = timeToX(pointA);
-            double bX = timeToX(pointB);
-            if (e.getX() < aX || e.getX() > bX) {
-                e.consume();
-                return;
-            }
-
+        seekSlider.setOnMousePressed(e -> {
             userSeeking = true;
-            pendingSeekMillis = segmentTimeAt(e.getX()).toMillis();
-            layoutSeekBar();
-            showSeekTooltip(e.getScreenX(), e.getScreenY(), Duration.millis(pendingSeekMillis));
-            e.consume();
+            showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
         });
 
-        seekBarPane.setOnMouseDragged(e -> {
-            if (!userSeeking || !isMediaReady()) return;
-
-            pendingSeekMillis = segmentTimeAt(e.getX()).toMillis();
-            layoutSeekBar();
-            showSeekTooltip(e.getScreenX(), e.getScreenY(), Duration.millis(pendingSeekMillis));
-            e.consume();
+        seekSlider.setOnMouseDragged(e -> {
+            userSeeking = true;
+            showSeekTooltip(
+                    seekTooltip,
+                    e.getScreenX(),
+                    e.getScreenY(),
+                    Duration.millis(seekSlider.getValue())
+            );
         });
 
-        seekBarPane.setOnMouseReleased(e -> {
-            if (!userSeeking) return;
-
+        seekSlider.setOnMouseReleased(e -> {
             if (mediaPlayer != null) {
-                mediaPlayer.seek(Duration.millis(pendingSeekMillis));
+                mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
             }
-
             userSeeking = false;
-            layoutSeekBar();
 
-            if (seekBarPane.isHover()) {
-                showSeekTooltip(e.getScreenX(), e.getScreenY(), fullTimelineTimeAt(e.getX()));
+            if (seekSlider.isHover()) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
             } else {
                 seekTooltip.hide();
             }
-            e.consume();
+        });
+
+        seekSlider.valueChangingProperty().addListener((obs, was, changing) -> {
+            userSeeking = changing;
+            if (!changing && mediaPlayer != null) {
+                mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
+            }
         });
     }
 
-    private Duration fullTimelineTimeAt(double mouseX) {
-        if (!isMediaReady() || seekBarPane.getWidth() <= 0) return Duration.ZERO;
+    private Duration hoverTimeAt(double mouseX) {
+        double width = seekSlider.getWidth();
+        if (width <= 0) return Duration.ZERO;
 
-        double ratio = clamp01(mouseX / seekBarPane.getWidth());
-        return Duration.millis(ratio * mediaDuration.toMillis());
+        double ratio = Math.max(0, Math.min(1, mouseX / width));
+        double hoverMillis = seekSlider.getMin()
+                + ratio * (seekSlider.getMax() - seekSlider.getMin());
+        return Duration.millis(hoverMillis);
     }
 
-    private Duration segmentTimeAt(double mouseX) {
-        if (!isMediaReady()) return pointA;
-
-        double aX = timeToX(pointA);
-        double bX = timeToX(pointB);
-        double clampedX = Math.max(aX, Math.min(mouseX, bX));
-
-        if (bX <= aX) return pointA;
-
-        double ratio = (clampedX - aX) / (bX - aX);
-        double millis = pointA.toMillis()
-                + ratio * (pointB.toMillis() - pointA.toMillis());
-        return Duration.millis(millis);
-    }
-
-    private void showSeekTooltip(double screenX, double screenY, Duration time) {
-        seekTooltip.setText(formatDuration(time));
-        seekTooltip.show(seekBarPane.getScene().getWindow(), screenX + 10, screenY - 35);
-    }
-
-    private void layoutSeekBar() {
-        double width = seekBarPane.getWidth();
-        if (width <= 0) return;
-
-        double trackY = SEEK_TRACK_CENTER_Y - SEEK_TRACK_HEIGHT / 2.0;
-        seekInactiveTrack.resizeRelocate(0, trackY, width, SEEK_TRACK_HEIGHT);
-
-        if (!isMediaReady()) {
-            setSeekVisualsVisible(false);
-            return;
-        }
-
-        setSeekVisualsVisible(true);
-
-        double aX = timeToX(pointA);
-        double bX = timeToX(pointB);
-
-        seekActiveTrack.resizeRelocate(
-                aX,
-                trackY,
-                Math.max(0, bX - aX),
-                SEEK_TRACK_HEIGHT
-        );
-
-        double currentMillis = userSeeking
-                ? pendingSeekMillis
-                : mediaPlayer.getCurrentTime().toMillis();
-        currentMillis = Math.max(pointA.toMillis(), Math.min(currentMillis, pointB.toMillis()));
-
-        double thumbX = timeToX(Duration.millis(currentMillis));
-        seekThumb.resizeRelocate(
-                thumbX - SEEK_THUMB_SIZE / 2.0,
-                SEEK_TRACK_CENTER_Y - SEEK_THUMB_SIZE / 2.0,
-                SEEK_THUMB_SIZE,
-                SEEK_THUMB_SIZE
-        );
-
-        positionMarker(aMarkerLine, aMarkerLabel, aX);
-        positionMarker(bMarkerLine, bMarkerLabel, bX);
-    }
-
-    private void positionMarker(Region line, Label label, double x) {
-        line.resizeRelocate(
-                x - 1,
-                SEEK_TRACK_CENTER_Y - SEEK_MARKER_LINE_HEIGHT / 2.0,
-                2,
-                SEEK_MARKER_LINE_HEIGHT
-        );
-
-        label.applyCss();
-        label.autosize();
-
-        double labelWidth = label.prefWidth(-1);
-        double labelX = x - labelWidth / 2.0;
-        labelX = Math.max(0, Math.min(labelX, seekBarPane.getWidth() - labelWidth));
-
-        label.relocate(labelX, SEEK_TRACK_CENTER_Y + SEEK_MARKER_LINE_HEIGHT / 2.0);
-    }
-
-    private double timeToX(Duration time) {
-        if (!isMediaReady() || seekBarPane.getWidth() <= 0) return 0;
-
-        double ratio = clamp01(time.toMillis() / mediaDuration.toMillis());
-        return ratio * seekBarPane.getWidth();
-    }
-
-    private void setSeekVisualsVisible(boolean visible) {
-        seekActiveTrack.setVisible(visible);
-        seekThumb.setVisible(visible);
-        aMarkerLine.setVisible(visible);
-        bMarkerLine.setVisible(visible);
-        aMarkerLabel.setVisible(visible);
-        bMarkerLabel.setVisible(visible);
-    }
-
-    private boolean isMediaReady() {
-        return mediaPlayer != null
-                && mediaDuration != null
-                && !mediaDuration.isUnknown()
-                && !mediaDuration.isIndefinite()
-                && mediaDuration.greaterThan(Duration.ZERO);
-    }
-
-    private double clamp01(double value) {
-        return Math.max(0, Math.min(1, value));
+    private void showSeekTooltip(Tooltip tooltip, double screenX, double screenY, Duration time) {
+        tooltip.setText(formatDuration(time));
+        tooltip.show(seekSlider.getScene().getWindow(), screenX + 10, screenY - 35);
     }
 
     private void configureTimestampField(TextField field, double width) {
@@ -562,13 +379,7 @@ public class VideoLoopPlayer extends Application {
         );
     }
 
-    private Region createMarkerLine() {
-        Region line = new Region();
-        line.setStyle("-fx-background-color: #00c853;");
-        return line;
-    }
-
-    private Label createMarkerLabel(String text) {
+    private VBox createSeekMarker(String text) {
         Label label = new Label(text);
         label.setStyle(
                 "-fx-text-fill: #00c853;" +
@@ -577,41 +388,48 @@ public class VideoLoopPlayer extends Application {
                 "-fx-background-color: rgba(0, 0, 0, 0.75);" +
                 "-fx-padding: 0 2 0 2;"
         );
-        return label;
+
+        Region line = new Region();
+        line.setMinSize(2, 22);
+        line.setPrefSize(2, 22);
+        line.setMaxSize(2, 22);
+        line.setStyle("-fx-background-color: #00c853;");
+
+        VBox marker = new VBox(0, line, label);
+        marker.setAlignment(Pos.TOP_CENTER);
+        marker.setMouseTransparent(true);
+        return marker;
     }
 
-    private void configureVolumeSliderAppearance() {
-        applyVolumeSliderOutline();
-        volumeSlider.focusedProperty().addListener((obs, oldValue, newValue) ->
-                Platform.runLater(this::applyVolumeSliderOutline)
-        );
-        volumeSlider.skinProperty().addListener((obs, oldSkin, newSkin) ->
-                Platform.runLater(this::applyVolumeSliderOutline)
-        );
+    private void updateLoopMarkers() {
+        if (mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)
+                || seekMarkerOverlay.getWidth() <= 0) {
+            aMarker.setVisible(false);
+            bMarker.setVisible(false);
+            return;
+        }
+
+        positionSeekMarker(aMarker, pointA);
+        positionSeekMarker(bMarker, pointB);
     }
 
-    private void applyVolumeSliderOutline() {
-        Region track = (Region) volumeSlider.lookup(".track");
-        if (track != null) {
-            track.setStyle(
-                    "-fx-background-color: #b8b8b8;" +
-                    "-fx-border-color: black;" +
-                    "-fx-border-width: 1;" +
-                    "-fx-background-radius: 2;" +
-                    "-fx-border-radius: 2;"
-            );
-        }
+    private void positionSeekMarker(VBox marker, Duration time) {
+        marker.applyCss();
+        marker.autosize();
 
-        Region thumb = (Region) volumeSlider.lookup(".thumb");
-        if (thumb != null) {
-            thumb.setStyle(
-                    "-fx-background-color: #f4f4f4;" +
-                    "-fx-border-color: black;" +
-                    "-fx-border-width: 1;" +
-                    "-fx-background-radius: 20;" +
-                    "-fx-border-radius: 20;"
-            );
-        }
+        double durationMillis = mediaDuration.toMillis();
+        double ratio = Math.max(0, Math.min(1, time.toMillis() / durationMillis));
+        double overlayWidth = seekMarkerOverlay.getWidth();
+        double markerWidth = Math.max(1, marker.prefWidth(-1));
+        double x = ratio * overlayWidth - markerWidth / 2.0;
+        x = Math.max(0, Math.min(x, overlayWidth - markerWidth));
+
+        double y = Math.max(0, (seekMarkerOverlay.getHeight() - marker.prefHeight(-1)) / 2.0);
+        marker.relocate(x, y);
+        marker.setVisible(true);
     }
 
     private void togglePlayPause() {
@@ -627,16 +445,14 @@ public class VideoLoopPlayer extends Application {
             }
             mediaPlayer.play();
         }
+
     }
 
     private void seekBySeconds(double seconds) {
-        if (!isMediaReady()) return;
+        if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
 
         double targetMillis = mediaPlayer.getCurrentTime().toMillis() + seconds * 1000.0;
-        targetMillis = Math.max(
-                pointA.toMillis(),
-                Math.min(targetMillis, pointB.toMillis())
-        );
+        targetMillis = Math.max(0, Math.min(targetMillis, mediaDuration.toMillis()));
         mediaPlayer.seek(Duration.millis(targetMillis));
     }
 
@@ -677,7 +493,6 @@ public class VideoLoopPlayer extends Application {
             Duration b = parseDuration(bField.getText());
             a = clamp(a, Duration.ZERO, mediaDuration);
             b = clamp(b, Duration.ZERO, mediaDuration);
-
             if (!b.greaterThan(a)) {
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
@@ -689,7 +504,6 @@ public class VideoLoopPlayer extends Application {
             aField.setText(formatDuration(pointA));
             bField.setText(formatDuration(pointB));
             validateLoopRange();
-
         } catch (IllegalArgumentException ex) {
             aField.setText(formatDuration(pointA));
             bField.setText(formatDuration(pointB));
@@ -699,10 +513,8 @@ public class VideoLoopPlayer extends Application {
     private void validateLoopRange() {
         if (mediaPlayer == null) return;
 
-        layoutSeekBar();
-
+        updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
-
         Duration current = mediaPlayer.getCurrentTime();
         if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
             mediaPlayer.seek(pointA);
@@ -763,15 +575,11 @@ public class VideoLoopPlayer extends Application {
     }
 
     private Duration parseDuration(String text) {
-        if (text == null || text.isBlank()) {
-            throw new IllegalArgumentException("Empty time");
-        }
+        if (text == null || text.isBlank()) throw new IllegalArgumentException("Empty time");
 
         String normalized = text.trim().replace(',', '.');
         String[] parts = normalized.split(":");
-        if (parts.length < 1 || parts.length > 3) {
-            throw new IllegalArgumentException("Bad format");
-        }
+        if (parts.length < 1 || parts.length > 3) throw new IllegalArgumentException("Bad format");
 
         double seconds;
         try {
@@ -780,8 +588,7 @@ public class VideoLoopPlayer extends Application {
                         + Integer.parseInt(parts[1]) * 60.0
                         + Double.parseDouble(parts[2]);
             } else if (parts.length == 2) {
-                seconds = Integer.parseInt(parts[0]) * 60.0
-                        + Double.parseDouble(parts[1]);
+                seconds = Integer.parseInt(parts[0]) * 60.0 + Double.parseDouble(parts[1]);
             } else {
                 seconds = Double.parseDouble(parts[0]);
             }
@@ -803,9 +610,7 @@ public class VideoLoopPlayer extends Application {
     }
 
     private String formatDuration(Duration duration) {
-        if (duration == null || duration.isUnknown() || duration.isIndefinite()) {
-            return "00:00:00.000";
-        }
+        if (duration == null || duration.isUnknown() || duration.isIndefinite()) return "00:00:00.000";
 
         long totalMillis = Math.max(0, Math.round(duration.toMillis()));
         long totalSeconds = totalMillis / 1000;
@@ -814,38 +619,22 @@ public class VideoLoopPlayer extends Application {
         long seconds = totalSeconds % 60;
         long millis = totalMillis % 1000;
 
-        return String.format(
-                Locale.ROOT,
-                "%02d:%02d:%02d.%03d",
-                hours,
-                minutes,
-                seconds,
-                millis
-        );
+        return String.format(Locale.ROOT, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis);
     }
 
     private void setWindowIcon(Stage stage) {
         try (InputStream resource = getClass().getResourceAsStream("/app-icon.b64")) {
             if (resource == null) return;
 
-            String encoded = new String(
-                    resource.readAllBytes(),
-                    StandardCharsets.US_ASCII
-            ).trim();
-
+            String encoded = new String(resource.readAllBytes(), StandardCharsets.US_ASCII).trim();
             byte[] iconBytes = Base64.getDecoder().decode(encoded);
             stage.getIcons().add(new Image(new ByteArrayInputStream(iconBytes)));
-
         } catch (Exception ex) {
             System.err.println("Could not load application icon: " + ex.getMessage());
         }
     }
 
     private void disposePlayer() {
-        if (seekTooltip != null) {
-            seekTooltip.hide();
-        }
-
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();
