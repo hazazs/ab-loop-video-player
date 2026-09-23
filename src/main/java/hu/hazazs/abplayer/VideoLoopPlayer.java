@@ -653,6 +653,8 @@ public class VideoLoopPlayer extends Application {
     private void positionSeekMarker(VBox marker, Duration time) {
         marker.applyCss();
         marker.autosize();
+        marker.requestLayout();
+        marker.layout();
 
         Point2D targetPoint = thumbCenterForTime(time);
         if (targetPoint == null || marker.getChildren().isEmpty()) {
