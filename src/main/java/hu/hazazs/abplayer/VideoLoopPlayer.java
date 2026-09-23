@@ -181,7 +181,12 @@ public class VideoLoopPlayer extends Application {
 
         VBox controls = new VBox(10, timeRow, playbackRow, loopGrid);
         controls.setPadding(new Insets(10, 12, 12, 12));
-        controls.setStyle("-fx-background-color: #22252b; -fx-text-fill: white;");
+        controls.setStyle(
+                "-fx-background-color: #22252b;" +
+                "-fx-text-fill: white;" +
+                "-fx-border-color: black;" +
+                "-fx-border-width: 1;"
+        );
         styleLabels(controls);
         root.setBottom(controls);
 
