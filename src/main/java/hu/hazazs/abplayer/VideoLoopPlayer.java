@@ -3,8 +3,11 @@ package hu.hazazs.abplayer;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
@@ -240,30 +243,45 @@ public class VideoLoopPlayer extends Application {
                 totalTimeLabel.setText(formatDuration(mediaDuration));
                 seekSlider.setMin(0);
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
-                seekSlider.setValue(0);
+                seekSlider.setValue(pointA.toMillis());
                 seekSlider.setDisable(false);
+                seekSlider.applyCss();
+                seekSlider.layout();
                 updateLoopMarkers();
                 mediaPlayer.play();
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
+                if (pointB.greaterThan(pointA)
+                        && newTime.greaterThanOrEqualTo(pointB)) {
+                    if (!userSeeking) {
+                        seekSlider.setValue(pointB.toMillis());
+                    }
+
+                    mediaPlayer.seek(pointA);
+
+                    if (!userSeeking) {
+                        seekSlider.setValue(pointA.toMillis());
+                    }
+                    currentTimeLabel.setText(formatDuration(pointA));
+
+                    if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
+                        mediaPlayer.play();
+                    }
+                    return;
+                }
+
                 if (!userSeeking) {
                     seekSlider.setValue(newTime.toMillis());
                 }
                 currentTimeLabel.setText(formatDuration(newTime));
-
-                if (pointB.greaterThan(pointA)
-                        && newTime.greaterThanOrEqualTo(pointB)) {
-                    mediaPlayer.seek(pointA);
-                    if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
-                        mediaPlayer.play();
-                    }
-                }
             });
 
             mediaPlayer.setOnEndOfMedia(() -> {
                 if (pointB.greaterThan(pointA)) {
                     mediaPlayer.seek(pointA);
+                    seekSlider.setValue(pointA.toMillis());
+                    currentTimeLabel.setText(formatDuration(pointA));
                     mediaPlayer.play();
                 }
             });
@@ -335,13 +353,19 @@ public class VideoLoopPlayer extends Application {
     }
 
     private Duration hoverTimeAt(double mouseX) {
-        double width = seekSlider.getWidth();
-        if (width <= 0) return Duration.ZERO;
+        Node track = seekSlider.lookup(".track");
+        if (track == null || mediaDuration == null || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
+            return Duration.ZERO;
+        }
 
-        double ratio = Math.max(0, Math.min(1, mouseX / width));
-        double hoverMillis = seekSlider.getMin()
-                + ratio * (seekSlider.getMax() - seekSlider.getMin());
-        return Duration.millis(hoverMillis);
+        Bounds trackBounds = track.getBoundsInParent();
+        double startX = trackBounds.getMinX();
+        double endX = trackBounds.getMaxX();
+        double trackWidth = endX - startX;
+        if (trackWidth <= 0) return Duration.ZERO;
+
+        double ratio = Math.max(0, Math.min(1, (mouseX - startX) / trackWidth));
+        return Duration.millis(ratio * mediaDuration.toMillis());
     }
 
     private void showSeekTooltip(Tooltip tooltip, double screenX, double screenY, Duration time) {
@@ -454,17 +478,62 @@ public class VideoLoopPlayer extends Application {
         marker.applyCss();
         marker.autosize();
 
-        double durationMillis = mediaDuration.toMillis();
-        double ratio = Math.max(0, Math.min(1, time.toMillis() / durationMillis));
-        double overlayWidth = seekMarkerOverlay.getWidth();
-        double markerWidth = Math.max(1, marker.prefWidth(-1));
-        double x = ratio * overlayWidth - markerWidth / 2.0;
-        x = Math.max(0, Math.min(x, overlayWidth - markerWidth));
+        Point2D thumbCenter = thumbCenterForTime(time);
+        if (thumbCenter == null) {
+            marker.setVisible(false);
+            return;
+        }
 
+        double markerWidth = Math.max(1, marker.prefWidth(-1));
         double markerLineHeight = 22.0;
-        double y = Math.max(0, seekMarkerOverlay.getHeight() / 2.0 - markerLineHeight / 2.0);
+
+        // The marker line is the first VBox child and is centered horizontally.
+        // Position the VBox so the line's exact center pixel matches the slider
+        // thumb's exact center for the same timestamp.
+        double x = thumbCenter.getX() - markerWidth / 2.0;
+        double y = thumbCenter.getY() - markerLineHeight / 2.0;
+
         marker.relocate(x, y);
         marker.setVisible(true);
+    }
+
+    private Point2D thumbCenterForTime(Duration time) {
+        if (mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
+            return null;
+        }
+
+        Node track = seekSlider.lookup(".track");
+        Node thumb = seekSlider.lookup(".thumb");
+        if (track == null || thumb == null || seekSlider.getScene() == null) {
+            return null;
+        }
+
+        Bounds trackSceneBounds = track.localToScene(track.getBoundsInLocal());
+        Bounds thumbSceneBounds = thumb.localToScene(thumb.getBoundsInLocal());
+        if (trackSceneBounds == null || thumbSceneBounds == null) {
+            return null;
+        }
+
+        Point2D trackStart = seekMarkerOverlay.sceneToLocal(
+                trackSceneBounds.getMinX(),
+                trackSceneBounds.getCenterY()
+        );
+        Point2D trackEnd = seekMarkerOverlay.sceneToLocal(
+                trackSceneBounds.getMaxX(),
+                trackSceneBounds.getCenterY()
+        );
+        Point2D currentThumbCenter = seekMarkerOverlay.sceneToLocal(
+                thumbSceneBounds.getCenterX(),
+                thumbSceneBounds.getCenterY()
+        );
+
+        double ratio = Math.max(0, Math.min(1, time.toMillis() / mediaDuration.toMillis()));
+        double x = trackStart.getX() + ratio * (trackEnd.getX() - trackStart.getX());
+
+        return new Point2D(x, currentThumbCenter.getY());
     }
 
     private void togglePlayPause() {
@@ -548,11 +617,14 @@ public class VideoLoopPlayer extends Application {
     private void validateLoopRange() {
         if (mediaPlayer == null) return;
 
+        seekSlider.setValue(mediaPlayer.getCurrentTime().toMillis());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = mediaPlayer.getCurrentTime();
         if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
             mediaPlayer.seek(pointA);
+            seekSlider.setValue(pointA.toMillis());
+            currentTimeLabel.setText(formatDuration(pointA));
         }
     }
 
