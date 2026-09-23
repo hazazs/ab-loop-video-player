@@ -59,9 +59,11 @@ public class VideoLoopPlayer extends Application {
     private boolean userSeeking;
     private boolean bypassLoopUntilEnd;
     private boolean atVideoEnd;
+    private boolean restartingFromEnd;
     private Long exactPausedSeekMillis;
 
     private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
+    private final PauseTransition restartCheckDelay = new PauseTransition(Duration.millis(25));
 
     @Override
     public void start(Stage stage) {
@@ -85,6 +87,7 @@ public class VideoLoopPlayer extends Application {
         mediaView.fitHeightProperty().bind(videoPane.heightProperty());
 
         singleClickDelay.setOnFinished(e -> togglePlayPause());
+        restartCheckDelay.setOnFinished(e -> finishRestartFromEnd());
         videoPane.setOnMouseClicked(e -> {
             if (e.getButton() != MouseButton.PRIMARY) return;
 
@@ -255,6 +258,8 @@ public class VideoLoopPlayer extends Application {
                 pointB = mediaDuration;
                 bypassLoopUntilEnd = false;
                 atVideoEnd = false;
+                restartingFromEnd = false;
+                restartCheckDelay.stop();
                 exactPausedSeekMillis = null;
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
@@ -271,6 +276,12 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
+                if (restartingFromEnd) {
+                    seekSlider.setValue(0);
+                    currentTimeLabel.setText(formatDuration(Duration.ZERO));
+                    return;
+                }
+
                 if (!bypassLoopUntilEnd
                         && pointB.greaterThan(pointA)
                         && oldTime.lessThanOrEqualTo(pointB)
@@ -312,6 +323,10 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.setOnEndOfMedia(() -> {
+                if (restartingFromEnd) {
+                    return;
+                }
+
                 exactPausedSeekMillis = null;
 
                 if (!bypassLoopUntilEnd && pointB.greaterThan(pointA)) {
@@ -394,6 +409,8 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void seekFromProgressBar(Duration target) {
+        restartCheckDelay.stop();
+        restartingFromEnd = false;
         exactPausedSeekMillis = null;
         atVideoEnd = false;
         bypassLoopUntilEnd = target.greaterThan(pointB);
@@ -591,19 +608,7 @@ public class VideoLoopPlayer extends Application {
         // from currentTime, because JavaFX can briefly expose the old end
         // timestamp after playback has already restarted.
         if (atVideoEnd) {
-            bypassLoopUntilEnd = false;
-            atVideoEnd = false;
-            exactPausedSeekMillis = null;
-
-            mediaPlayer.stop();
-            seekSlider.setValue(0);
-            currentTimeLabel.setText(formatDuration(Duration.ZERO));
-
-            Platform.runLater(() -> {
-                if (mediaPlayer != null) {
-                    mediaPlayer.play();
-                }
-            });
+            restartFromRealEnd();
             return;
         }
 
@@ -626,6 +631,40 @@ public class VideoLoopPlayer extends Application {
         mediaPlayer.play();
     }
 
+    private void restartFromRealEnd() {
+        if (mediaPlayer == null) return;
+
+        bypassLoopUntilEnd = false;
+        atVideoEnd = false;
+        restartingFromEnd = true;
+        exactPausedSeekMillis = 0L;
+
+        mediaPlayer.stop();
+        mediaPlayer.seek(Duration.ZERO);
+        seekSlider.setValue(0);
+        currentTimeLabel.setText(formatDuration(Duration.ZERO));
+        restartCheckDelay.playFromStart();
+    }
+
+    private void finishRestartFromEnd() {
+        if (!restartingFromEnd || mediaPlayer == null) return;
+
+        if (mediaPlayer.getCurrentTime().toMillis() <= 1.0) {
+            restartingFromEnd = false;
+            exactPausedSeekMillis = null;
+            mediaPlayer.play();
+            return;
+        }
+
+        // A stale asynchronous seek to the previous end may have completed
+        // after the restart request. Force zero again and wait until JavaFX
+        // confirms the new position before starting playback.
+        mediaPlayer.seek(Duration.ZERO);
+        seekSlider.setValue(0);
+        currentTimeLabel.setText(formatDuration(Duration.ZERO));
+        restartCheckDelay.playFromStart();
+    }
+
     private boolean isNaturalPlaybackStep(Duration oldTime, Duration newTime) {
         if (mediaPlayer == null || mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
             return false;
@@ -637,6 +676,9 @@ public class VideoLoopPlayer extends Application {
 
     private void seekBySeconds(double seconds) {
         if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
+
+        restartCheckDelay.stop();
+        restartingFromEnd = false;
 
         // Use the slider thumb as the logical seek position. Immediately after
         // restarting from the real end, JavaFX may still expose the old end
@@ -889,6 +931,8 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void disposePlayer() {
+        restartCheckDelay.stop();
+        restartingFromEnd = false;
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();
