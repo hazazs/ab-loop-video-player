@@ -581,7 +581,7 @@ public class VideoLoopPlayer extends Application {
             return;
         }
 
-        if (atVideoEnd) {
+        if (atVideoEnd || isAtActualVideoEnd()) {
             bypassLoopUntilEnd = false;
             atVideoEnd = false;
             exactPausedSeekMillis = null;
@@ -608,6 +608,20 @@ public class VideoLoopPlayer extends Application {
         }
 
         mediaPlayer.play();
+    }
+
+    private boolean isAtActualVideoEnd() {
+        if (mediaPlayer == null
+                || mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
+            return false;
+        }
+
+        long currentMillis = Math.round(mediaPlayer.getCurrentTime().toMillis());
+        long endMillis = Math.round(mediaDuration.toMillis());
+        return currentMillis >= Math.max(0, endMillis - 1);
     }
 
     private void seekBySeconds(double seconds) {
@@ -700,12 +714,17 @@ public class VideoLoopPlayer extends Application {
 
         bypassLoopUntilEnd = false;
         atVideoEnd = false;
-        seekSlider.setValue(mediaPlayer.getCurrentTime().toMillis());
+        seekSlider.setValue(logicalCurrentTime().toMillis());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = logicalCurrentTime();
         if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
             mediaPlayer.seek(pointA);
+
+            if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
+                exactPausedSeekMillis = Math.round(pointA.toMillis());
+            }
+
             seekSlider.setValue(pointA.toMillis());
             currentTimeLabel.setText(formatDuration(pointA));
         }
