@@ -1,0 +1,66 @@
+name: Build runnable JAR
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "pom.xml"
+      - "src/**"
+      - ".github/workflows/build-runnable-jar.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build runnable JAR
+        run: mvn -B clean package
+
+      - name: Verify runnable JAR
+        shell: pwsh
+        run: |
+          $jar = "target/ab-loop-video-player.jar"
+          if (-not (Test-Path $jar)) {
+            throw "Runnable JAR was not created: $jar"
+          }
+
+          $entries = & jar tf $jar
+
+          foreach ($required in @(
+            "hu/hazazs/abplayer/AppLauncher.class",
+            "hu/hazazs/abplayer/VideoLoopPlayer.class",
+            "javafx/application/Application.class"
+          )) {
+            if (-not ($entries -contains $required)) {
+              throw "Missing required JAR entry: $required"
+            }
+          }
+
+          if (-not ($entries | Where-Object { $_ -match "(?i)(glass|jfxmedia|prism_d3d).*\.dll$" })) {
+            throw "Windows JavaFX native libraries were not found in the JAR"
+          }
+
+          & jar xf $jar META-INF/MANIFEST.MF
+          $manifest = Get-Content "META-INF/MANIFEST.MF" -Raw
+          if ($manifest -notmatch "Main-Class:\s*hu\.hazazs\.abplayer\.AppLauncher") {
+            throw "Main-Class is missing or incorrect"
+          }
+
+      - name: Upload runnable JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: ab-loop-video-player-runnable-jar
+          path: target/ab-loop-video-player.jar
+          if-no-files-found: error
