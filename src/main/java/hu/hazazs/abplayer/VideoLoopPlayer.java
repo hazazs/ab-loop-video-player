@@ -37,7 +37,6 @@ public class VideoLoopPlayer extends Application {
 
     private final TextField aField = new TextField("00:00:00");
     private final TextField bField = new TextField("00:00:00");
-    private final CheckBox loopCheckBox = new CheckBox("Loop A–B");
 
     private Duration pointA = Duration.ZERO;
     private Duration pointB = Duration.ZERO;
@@ -102,15 +101,15 @@ public class VideoLoopPlayer extends Application {
         aField.setPrefColumnCount(10);
         bField.setPrefColumnCount(10);
 
-        Button setAButton = new Button("Set A = current");
-        Button setBButton = new Button("Set B = current");
-        Button goAButton = new Button("Go to A");
-        Button clearLoopButton = new Button("Clear A/B");
+        Button setAButton = new Button("Set");
+        Button clearAButton = new Button("Clear");
+        Button setBButton = new Button("Set");
+        Button clearBButton = new Button("Clear");
 
         setAButton.setOnAction(e -> setPointAFromCurrent());
+        clearAButton.setOnAction(e -> clearPointA());
         setBButton.setOnAction(e -> setPointBFromCurrent());
-        goAButton.setOnAction(e -> seekTo(pointA));
-        clearLoopButton.setOnAction(e -> clearLoop());
+        clearBButton.setOnAction(e -> clearPointB());
 
         aField.setOnAction(e -> applyTypedPoints());
         bField.setOnAction(e -> applyTypedPoints());
@@ -120,7 +119,6 @@ public class VideoLoopPlayer extends Application {
         bField.focusedProperty().addListener((obs, was, is) -> {
             if (was && !is) applyTypedPoints();
         });
-        loopCheckBox.setOnAction(e -> validateLoopState());
 
         GridPane loopGrid = new GridPane();
         loopGrid.setHgap(8);
@@ -128,18 +126,15 @@ public class VideoLoopPlayer extends Application {
         loopGrid.add(new Label("A"), 0, 0);
         loopGrid.add(aField, 1, 0);
         loopGrid.add(setAButton, 2, 0);
+        loopGrid.add(clearAButton, 3, 0);
         loopGrid.add(new Label("B"), 0, 1);
         loopGrid.add(bField, 1, 1);
         loopGrid.add(setBButton, 2, 1);
-        loopGrid.add(loopCheckBox, 3, 0);
-        loopGrid.add(goAButton, 3, 1);
-        loopGrid.add(clearLoopButton, 4, 1);
+        loopGrid.add(clearBButton, 3, 1);
 
-        Label loopHint = new Label("Example: A = 00:01:00, B = 00:06:00");
-        loopHint.setStyle("-fx-text-fill: #9ea4ae;");
         statusLabel.setStyle("-fx-text-fill: #c6cad1;");
 
-        VBox controls = new VBox(10, timeRow, playbackRow, new Separator(), loopGrid, loopHint, statusLabel);
+        VBox controls = new VBox(10, timeRow, playbackRow, loopGrid, statusLabel);
         controls.setPadding(new Insets(10, 12, 12, 12));
         controls.setStyle("-fx-background-color: #22252b; -fx-text-fill: white;");
         styleLabels(controls);
@@ -169,6 +164,12 @@ public class VideoLoopPlayer extends Application {
     private void openVideo(Stage stage) {
         FileChooser chooser = new FileChooser();
         chooser.setTitle("Open Video");
+
+        File defaultFolder = new File("D:\\stuffz");
+        if (defaultFolder.isDirectory()) {
+            chooser.setInitialDirectory(defaultFolder);
+        }
+
         chooser.getExtensionFilters().addAll(
                 new FileChooser.ExtensionFilter("MP4 / M4V", "*.mp4", "*.m4v"),
                 new FileChooser.ExtensionFilter("All files", "*.*")
@@ -200,7 +201,8 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
                 seekSlider.setValue(0);
                 seekSlider.setDisable(false);
-                statusLabel.setText("Ready. Set A and B, then enable Loop A–B.");
+                statusLabel.setText("A–B loop active: " + formatDuration(pointA) + " → " + formatDuration(pointB));
+                mediaPlayer.play();
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
@@ -209,8 +211,7 @@ public class VideoLoopPlayer extends Application {
                 }
                 currentTimeLabel.setText(formatDuration(newTime));
 
-                if (loopCheckBox.isSelected()
-                        && pointB.greaterThan(pointA)
+                if (pointB.greaterThan(pointA)
                         && newTime.greaterThanOrEqualTo(pointB)) {
                     mediaPlayer.seek(pointA);
                     if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
@@ -220,7 +221,7 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.setOnEndOfMedia(() -> {
-                if (loopCheckBox.isSelected() && pointB.greaterThan(pointA)) {
+                if (pointB.greaterThan(pointA)) {
                     mediaPlayer.seek(pointA);
                     mediaPlayer.play();
                 }
@@ -258,8 +259,7 @@ public class VideoLoopPlayer extends Application {
         if (status == MediaPlayer.Status.PLAYING) {
             mediaPlayer.pause();
         } else {
-            if (loopCheckBox.isSelected()
-                    && pointB.greaterThan(pointA)
+            if (pointB.greaterThan(pointA)
                     && mediaPlayer.getCurrentTime().greaterThanOrEqualTo(pointB)) {
                 mediaPlayer.seek(pointA);
             }
@@ -317,44 +317,35 @@ public class VideoLoopPlayer extends Application {
         }
     }
 
-    private void validateLoopState() {
-        if (mediaPlayer == null) {
-            loopCheckBox.setSelected(false);
-            return;
-        }
+    private void validateLoopRange() {
+        if (mediaPlayer == null) return;
 
         if (!pointB.greaterThan(pointA)) {
-            loopCheckBox.setSelected(false);
             statusLabel.setText("B must be later than A.");
             return;
         }
 
-        if (loopCheckBox.isSelected()) {
-            statusLabel.setText("A–B loop active: " + formatDuration(pointA) + " → " + formatDuration(pointB));
-            Duration current = mediaPlayer.getCurrentTime();
-            if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
-                mediaPlayer.seek(pointA);
-            }
-        } else {
-            statusLabel.setText("A–B loop is off.");
+        statusLabel.setText("A–B loop active: " + formatDuration(pointA) + " → " + formatDuration(pointB));
+        Duration current = mediaPlayer.getCurrentTime();
+        if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
+            mediaPlayer.seek(pointA);
         }
     }
 
-    private void clearLoop() {
+    private void clearPointA() {
         if (mediaPlayer == null) return;
 
         pointA = Duration.ZERO;
-        pointB = mediaDuration;
         aField.setText(formatDuration(pointA));
-        bField.setText(formatDuration(pointB));
-        loopCheckBox.setSelected(false);
-        statusLabel.setText("A/B reset to the whole video.");
+        validateLoopRange();
     }
 
-    private void seekTo(Duration target) {
-        if (mediaPlayer != null) {
-            mediaPlayer.seek(target);
-        }
+    private void clearPointB() {
+        if (mediaPlayer == null) return;
+
+        pointB = mediaDuration;
+        bField.setText(formatDuration(pointB));
+        validateLoopRange();
     }
 
     private void showMediaError(Throwable error) {
