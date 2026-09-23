@@ -8,6 +8,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.*;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
@@ -20,6 +21,8 @@ import java.io.File;
 import java.util.Locale;
 
 public class VideoLoopPlayer extends Application {
+
+    private static final double FRAME_STEP_SECONDS = 1.0 / 30.0;
 
     private MediaPlayer mediaPlayer;
     private final MediaView mediaView = new MediaView();
@@ -56,6 +59,11 @@ public class VideoLoopPlayer extends Application {
         mediaView.setPreserveRatio(true);
         mediaView.fitWidthProperty().bind(videoPane.widthProperty());
         mediaView.fitHeightProperty().bind(videoPane.heightProperty());
+        videoPane.setOnMouseClicked(e -> {
+            if (e.getButton() == MouseButton.PRIMARY) {
+                togglePlayPause();
+            }
+        });
         root.setCenter(videoPane);
 
         Button openButton = new Button("Open MP4…");
@@ -155,7 +163,9 @@ public class VideoLoopPlayer extends Application {
         stage.setScene(scene);
         stage.setMinWidth(760);
         stage.setMinHeight(560);
+        stage.setFullScreenExitHint("");
         stage.show();
+        stage.setFullScreen(true);
 
         stage.setOnCloseRequest(e -> disposePlayer());
     }
@@ -279,6 +289,22 @@ public class VideoLoopPlayer extends Application {
         updatePlayButton();
     }
 
+    private void seekBySeconds(double seconds) {
+        if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
+
+        double target = mediaPlayer.getCurrentTime().toSeconds() + seconds;
+        target = Math.max(0, Math.min(target, mediaDuration.toSeconds()));
+        mediaPlayer.seek(Duration.seconds(target));
+    }
+
+    private void stepFrame(int direction) {
+        if (mediaPlayer == null) return;
+
+        mediaPlayer.pause();
+        updatePlayButton();
+        seekBySeconds(direction * FRAME_STEP_SECONDS);
+    }
+
     private void setPointAFromCurrent() {
         if (mediaPlayer == null) return;
         pointA = mediaPlayer.getCurrentTime();
@@ -361,13 +387,27 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void handleKeyboard(KeyEvent e, Region root) {
-        if (!root.isFocused() && e.getTarget() instanceof TextInputControl) return;
         if (e.getTarget() instanceof TextInputControl) return;
 
         if (e.getCode() == KeyCode.SPACE) {
             togglePlayPause();
             e.consume();
+            return;
         }
+
+        if (e.getCode() != KeyCode.LEFT && e.getCode() != KeyCode.RIGHT) return;
+
+        int direction = e.getCode() == KeyCode.LEFT ? -1 : 1;
+
+        if (e.isControlDown()) {
+            stepFrame(direction);
+        } else if (e.isShiftDown()) {
+            seekBySeconds(direction * 30);
+        } else {
+            seekBySeconds(direction * 5);
+        }
+
+        e.consume();
     }
 
     private Duration parseDuration(String text) {
