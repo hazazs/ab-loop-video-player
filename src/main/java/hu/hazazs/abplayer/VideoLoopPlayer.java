@@ -757,7 +757,7 @@ public class VideoLoopPlayer extends Application {
             return;
         }
 
-        setBButton.setDisable(selectedMillis < pointA.toMillis());
+        setBButton.setDisable(selectedMillis <= pointA.toMillis());
         setAButton.setDisable(selectedMillis >= pointB.toMillis());
     }
 
