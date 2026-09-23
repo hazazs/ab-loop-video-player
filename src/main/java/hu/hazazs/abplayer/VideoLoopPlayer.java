@@ -1,7 +1,6 @@
 package hu.hazazs.abplayer;
 
 import javafx.application.Application;
-import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -10,6 +9,7 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
@@ -18,7 +18,11 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Locale;
 
 public class VideoLoopPlayer extends Application {
@@ -30,13 +34,12 @@ public class VideoLoopPlayer extends Application {
 
     private final Slider seekSlider = new Slider(0, 1, 0);
     private final Slider volumeSlider = new Slider(0, 100, 75);
-    private final Label currentTimeLabel = new Label("00:00:00");
-    private final Label totalTimeLabel = new Label("00:00:00");
+    private final Label currentTimeLabel = new Label("00:00:00.000");
+    private final Label totalTimeLabel = new Label("00:00:00.000");
     private final Label fileLabel = new Label("No video loaded");
-    private final Label statusLabel = new Label("Open a video to begin.");
 
-    private final TextField aField = new TextField("00:00:00");
-    private final TextField bField = new TextField("00:00:00");
+    private final TextField aField = new TextField("00:00:00.000");
+    private final TextField bField = new TextField("00:00:00.000");
 
     private Duration pointA = Duration.ZERO;
     private Duration pointB = Duration.ZERO;
@@ -46,6 +49,7 @@ public class VideoLoopPlayer extends Application {
     @Override
     public void start(Stage stage) {
         stage.setTitle("A–B Loop Video Player");
+        setWindowIcon(stage);
 
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: #17191d;");
@@ -98,8 +102,8 @@ public class VideoLoopPlayer extends Application {
         HBox playbackRow = new HBox(8, playbackSpacer, volumeSlider);
         playbackRow.setAlignment(Pos.CENTER_LEFT);
 
-        aField.setPrefColumnCount(10);
-        bField.setPrefColumnCount(10);
+        aField.setPrefColumnCount(12);
+        bField.setPrefColumnCount(12);
 
         Button setAButton = new Button("Set");
         Button clearAButton = new Button("Clear");
@@ -132,9 +136,7 @@ public class VideoLoopPlayer extends Application {
         loopGrid.add(setBButton, 2, 1);
         loopGrid.add(clearBButton, 3, 1);
 
-        statusLabel.setStyle("-fx-text-fill: #c6cad1;");
-
-        VBox controls = new VBox(10, timeRow, playbackRow, loopGrid, statusLabel);
+        VBox controls = new VBox(10, timeRow, playbackRow, loopGrid);
         controls.setPadding(new Insets(10, 12, 12, 12));
         controls.setStyle("-fx-background-color: #22252b; -fx-text-fill: white;");
         styleLabels(controls);
@@ -158,7 +160,6 @@ public class VideoLoopPlayer extends Application {
 
     private void styleLabels(Pane pane) {
         pane.lookupAll(".label").forEach(n -> n.setStyle("-fx-text-fill: #d6d9df;"));
-        statusLabel.setStyle("-fx-text-fill: #c6cad1;");
     }
 
     private void openVideo(Stage stage) {
@@ -187,7 +188,6 @@ public class VideoLoopPlayer extends Application {
             mediaPlayer.setVolume(volumeSlider.getValue() / 100.0);
 
             fileLabel.setText(file.getName());
-            statusLabel.setText("Loading video…");
             seekSlider.setDisable(true);
 
             mediaPlayer.setOnReady(() -> {
@@ -201,7 +201,6 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
                 seekSlider.setValue(0);
                 seekSlider.setDisable(false);
-                statusLabel.setText("A–B loop active: " + formatDuration(pointA) + " → " + formatDuration(pointB));
                 mediaPlayer.play();
             });
 
@@ -231,11 +230,26 @@ public class VideoLoopPlayer extends Application {
             media.setOnError(() -> showMediaError(media.getError()));
 
         } catch (Exception ex) {
-            statusLabel.setText("Could not open video: " + ex.getMessage());
+            System.err.println("Could not open video: " + ex.getMessage());
         }
     }
 
     private void installSeekBehavior() {
+        Tooltip seekTooltip = new Tooltip("00:00:00.000");
+        seekTooltip.setShowDelay(Duration.ZERO);
+        seekTooltip.setShowDuration(Duration.INDEFINITE);
+        Tooltip.install(seekSlider, seekTooltip);
+
+        seekSlider.setOnMouseMoved(e -> {
+            double width = seekSlider.getWidth();
+            if (width <= 0) return;
+
+            double ratio = Math.max(0, Math.min(1, e.getX() / width));
+            double hoverMillis = seekSlider.getMin()
+                    + ratio * (seekSlider.getMax() - seekSlider.getMin());
+            seekTooltip.setText(formatDuration(Duration.millis(hoverMillis)));
+        });
+
         seekSlider.setOnMousePressed(e -> userSeeking = true);
         seekSlider.setOnMouseDragged(e -> userSeeking = true);
         seekSlider.setOnMouseReleased(e -> {
@@ -271,9 +285,9 @@ public class VideoLoopPlayer extends Application {
     private void seekBySeconds(double seconds) {
         if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
 
-        double target = mediaPlayer.getCurrentTime().toSeconds() + seconds;
-        target = Math.max(0, Math.min(target, mediaDuration.toSeconds()));
-        mediaPlayer.seek(Duration.seconds(target));
+        double targetMillis = mediaPlayer.getCurrentTime().toMillis() + seconds * 1000.0;
+        targetMillis = Math.max(0, Math.min(targetMillis, mediaDuration.toMillis()));
+        mediaPlayer.seek(Duration.millis(targetMillis));
     }
 
     private void stepFrame(int direction) {
@@ -286,17 +300,23 @@ public class VideoLoopPlayer extends Application {
     private void setPointAFromCurrent() {
         if (mediaPlayer == null) return;
 
-        pointA = mediaPlayer.getCurrentTime();
-        aField.setText(formatDuration(pointA));
-        validateLoopRange();
+        Duration candidate = mediaPlayer.getCurrentTime();
+        if (pointB.greaterThan(candidate)) {
+            pointA = candidate;
+            aField.setText(formatDuration(pointA));
+            validateLoopRange();
+        }
     }
 
     private void setPointBFromCurrent() {
         if (mediaPlayer == null) return;
 
-        pointB = mediaPlayer.getCurrentTime();
-        bField.setText(formatDuration(pointB));
-        validateLoopRange();
+        Duration candidate = mediaPlayer.getCurrentTime();
+        if (candidate.greaterThan(pointA)) {
+            pointB = candidate;
+            bField.setText(formatDuration(pointB));
+            validateLoopRange();
+        }
     }
 
     private void applyTypedPoints() {
@@ -307,25 +327,27 @@ public class VideoLoopPlayer extends Application {
             Duration b = parseDuration(bField.getText());
             a = clamp(a, Duration.ZERO, mediaDuration);
             b = clamp(b, Duration.ZERO, mediaDuration);
+            if (!b.greaterThan(a)) {
+                aField.setText(formatDuration(pointA));
+                bField.setText(formatDuration(pointB));
+                return;
+            }
+
             pointA = a;
             pointB = b;
             aField.setText(formatDuration(pointA));
             bField.setText(formatDuration(pointB));
             validateLoopRange();
         } catch (IllegalArgumentException ex) {
-            statusLabel.setText("Invalid time. Use HH:MM:SS or HH:MM:SS.mmm");
+            aField.setText(formatDuration(pointA));
+            bField.setText(formatDuration(pointB));
         }
     }
 
     private void validateLoopRange() {
         if (mediaPlayer == null) return;
 
-        if (!pointB.greaterThan(pointA)) {
-            statusLabel.setText("B must be later than A.");
-            return;
-        }
-
-        statusLabel.setText("A–B loop active: " + formatDuration(pointA) + " → " + formatDuration(pointB));
+        if (!pointB.greaterThan(pointA)) return;
         Duration current = mediaPlayer.getCurrentTime();
         if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
             mediaPlayer.seek(pointA);
@@ -350,7 +372,7 @@ public class VideoLoopPlayer extends Application {
 
     private void showMediaError(Throwable error) {
         String message = error == null ? "Unknown media error" : error.getMessage();
-        Platform.runLater(() -> statusLabel.setText("Media error: " + message));
+        System.err.println("Media error: " + message);
     }
 
     private void handleVolumeScroll(ScrollEvent e) {
@@ -421,7 +443,7 @@ public class VideoLoopPlayer extends Application {
     }
 
     private String formatDuration(Duration duration) {
-        if (duration == null || duration.isUnknown() || duration.isIndefinite()) return "00:00:00";
+        if (duration == null || duration.isUnknown() || duration.isIndefinite()) return "00:00:00.000";
 
         long totalMillis = Math.max(0, Math.round(duration.toMillis()));
         long totalSeconds = totalMillis / 1000;
@@ -430,11 +452,19 @@ public class VideoLoopPlayer extends Application {
         long seconds = totalSeconds % 60;
         long millis = totalMillis % 1000;
 
-        if (millis == 0) {
-            return String.format(Locale.ROOT, "%02d:%02d:%02d", hours, minutes, seconds);
-        }
-
         return String.format(Locale.ROOT, "%02d:%02d:%02d.%03d", hours, minutes, seconds, millis);
+    }
+
+    private void setWindowIcon(Stage stage) {
+        try (InputStream resource = getClass().getResourceAsStream("/app-icon.b64")) {
+            if (resource == null) return;
+
+            String encoded = new String(resource.readAllBytes(), StandardCharsets.US_ASCII).trim();
+            byte[] iconBytes = Base64.getDecoder().decode(encoded);
+            stage.getIcons().add(new Image(new ByteArrayInputStream(iconBytes)));
+        } catch (Exception ex) {
+            System.err.println("Could not load application icon: " + ex.getMessage());
+        }
     }
 
     private void disposePlayer() {
