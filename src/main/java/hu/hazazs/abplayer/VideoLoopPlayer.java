@@ -7,6 +7,7 @@ import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -105,8 +106,11 @@ public class VideoLoopPlayer extends Application {
         seekSlider.setMaxWidth(Double.MAX_VALUE);
         seekSlider.setFocusTraversable(false);
 
-        seekMarkerOverlay.setMouseTransparent(true);
+        seekMarkerOverlay.setMouseTransparent(false);
+        seekMarkerOverlay.setPickOnBounds(false);
         seekMarkerOverlay.getChildren().addAll(aMarker, bMarker);
+        configureSeekMarkerDrag(aMarker, true);
+        configureSeekMarkerDrag(bMarker, false);
         aMarker.setVisible(false);
         bMarker.setVisible(false);
 
@@ -523,8 +527,77 @@ public class VideoLoopPlayer extends Application {
 
         VBox marker = new VBox(0, line, label);
         marker.setAlignment(Pos.TOP_CENTER);
-        marker.setMouseTransparent(true);
+        marker.setMinWidth(14);
+        marker.setPickOnBounds(true);
+        marker.setMouseTransparent(false);
+        marker.setCursor(Cursor.H_RESIZE);
         return marker;
+    }
+
+    private void configureSeekMarkerDrag(VBox marker, boolean isPointA) {
+        marker.setOnMousePressed(e -> {
+            if (e.getButton() != MouseButton.PRIMARY || mediaPlayer == null) return;
+
+            marker.setCursor(Cursor.CLOSED_HAND);
+            e.consume();
+        });
+
+        marker.setOnMouseDragged(e -> {
+            if (!e.isPrimaryButtonDown() || mediaPlayer == null) return;
+
+            Duration candidate = timeAtSceneX(e.getSceneX());
+            if (candidate == null) return;
+
+            long candidateMillis = Math.round(candidate.toMillis());
+            long maxMillis = Math.round(mediaDuration.toMillis());
+
+            if (isPointA) {
+                long latestA = Math.max(0, Math.round(pointB.toMillis()) - 1);
+                candidateMillis = Math.max(0, Math.min(candidateMillis, latestA));
+                pointA = Duration.millis(candidateMillis);
+                aField.setText(formatDuration(pointA));
+            } else {
+                long earliestB = Math.min(maxMillis, Math.round(pointA.toMillis()) + 1);
+                candidateMillis = Math.max(earliestB, Math.min(candidateMillis, maxMillis));
+                pointB = Duration.millis(candidateMillis);
+                bField.setText(formatDuration(pointB));
+            }
+
+            bypassLoopUntilEnd = false;
+            atVideoEnd = false;
+            updateSetButtonAvailability(seekSlider.getValue());
+            updateLoopMarkers();
+            e.consume();
+        });
+
+        marker.setOnMouseReleased(e -> {
+            if (e.getButton() != MouseButton.PRIMARY) return;
+
+            marker.setCursor(Cursor.H_RESIZE);
+            if (mediaPlayer != null) {
+                validateLoopRange();
+            }
+            e.consume();
+        });
+    }
+
+    private Duration timeAtSceneX(double sceneX) {
+        if (mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
+            return null;
+        }
+
+        Node track = seekSlider.lookup(".track");
+        if (track == null) return null;
+
+        Bounds trackSceneBounds = track.localToScene(track.getBoundsInLocal());
+        if (trackSceneBounds == null || trackSceneBounds.getWidth() <= 0) return null;
+
+        double ratio = (sceneX - trackSceneBounds.getMinX()) / trackSceneBounds.getWidth();
+        ratio = Math.max(0, Math.min(1, ratio));
+        return Duration.millis(ratio * mediaDuration.toMillis());
     }
 
     private void updateLoopMarkers() {
