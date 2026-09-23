@@ -60,6 +60,7 @@ public class VideoLoopPlayer extends Application {
     private boolean bypassLoopUntilEnd;
     private boolean atVideoEnd;
     private boolean restartingFromEnd;
+    private int restartZeroConfirmations;
     private Long exactPausedSeekMillis;
 
     private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
@@ -259,6 +260,7 @@ public class VideoLoopPlayer extends Application {
                 bypassLoopUntilEnd = false;
                 atVideoEnd = false;
                 restartingFromEnd = false;
+                restartZeroConfirmations = 0;
                 restartCheckDelay.stop();
                 exactPausedSeekMillis = null;
                 aField.setText(formatDuration(pointA));
@@ -411,6 +413,7 @@ public class VideoLoopPlayer extends Application {
     private void seekFromProgressBar(Duration target) {
         restartCheckDelay.stop();
         restartingFromEnd = false;
+        restartZeroConfirmations = 0;
         exactPausedSeekMillis = null;
         atVideoEnd = false;
         bypassLoopUntilEnd = target.greaterThan(pointB);
@@ -637,6 +640,7 @@ public class VideoLoopPlayer extends Application {
         bypassLoopUntilEnd = false;
         atVideoEnd = false;
         restartingFromEnd = true;
+        restartZeroConfirmations = 0;
         exactPausedSeekMillis = 0L;
 
         mediaPlayer.stop();
@@ -650,11 +654,23 @@ public class VideoLoopPlayer extends Application {
         if (!restartingFromEnd || mediaPlayer == null) return;
 
         if (mediaPlayer.getCurrentTime().toMillis() <= 1.0) {
-            restartingFromEnd = false;
-            exactPausedSeekMillis = null;
-            mediaPlayer.play();
+            restartZeroConfirmations++;
+            if (restartZeroConfirmations >= 2) {
+                restartingFromEnd = false;
+                restartZeroConfirmations = 0;
+                exactPausedSeekMillis = null;
+                mediaPlayer.play();
+                return;
+            }
+
+            // Confirm zero again on a later pulse before resuming. This gives
+            // any stale asynchronous seek-to-end one more chance to surface.
+            mediaPlayer.seek(Duration.ZERO);
+            restartCheckDelay.playFromStart();
             return;
         }
+
+        restartZeroConfirmations = 0;
 
         // A stale asynchronous seek to the previous end may have completed
         // after the restart request. Force zero again and wait until JavaFX
@@ -933,6 +949,7 @@ public class VideoLoopPlayer extends Application {
     private void disposePlayer() {
         restartCheckDelay.stop();
         restartingFromEnd = false;
+        restartZeroConfirmations = 0;
         if (mediaPlayer != null) {
             try {
                 mediaPlayer.stop();
