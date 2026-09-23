@@ -13,7 +13,6 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
@@ -42,8 +41,6 @@ public class VideoLoopPlayer extends Application {
 
     private final Slider seekSlider = new Slider(0, 1, 0);
     private final Pane seekMarkerOverlay = new Pane();
-    private final Region beforeARestrictedTrack = createRestrictedTrack();
-    private final Region afterBRestrictedTrack = createRestrictedTrack();
     private final VBox aMarker = createSeekMarker("A");
     private final VBox bMarker = createSeekMarker("B");
     private final Slider volumeSlider = new Slider(0, 100, 75);
@@ -99,12 +96,7 @@ public class VideoLoopPlayer extends Application {
         seekSlider.setFocusTraversable(false);
 
         seekMarkerOverlay.setMouseTransparent(true);
-        seekMarkerOverlay.getChildren().addAll(
-                beforeARestrictedTrack,
-                afterBRestrictedTrack,
-                aMarker,
-                bMarker
-        );
+        seekMarkerOverlay.getChildren().addAll(aMarker, bMarker);
         aMarker.setVisible(false);
         bMarker.setVisible(false);
 
@@ -117,8 +109,6 @@ public class VideoLoopPlayer extends Application {
         HBox.setHgrow(seekBarPane, Priority.ALWAYS);
         seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> updateLoopMarkers());
         seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> updateLoopMarkers());
-
-        installSeekRangeRestriction();
 
         HBox timeRow = new HBox(8, currentTimeLabel, seekBarPane, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
@@ -447,71 +437,6 @@ public class VideoLoopPlayer extends Application {
         );
     }
 
-    private Region createRestrictedTrack() {
-        Region region = new Region();
-        region.setMouseTransparent(true);
-        region.setStyle(
-                "-fx-background-color: #7a7a7a;" +
-                "-fx-border-color: black;" +
-                "-fx-border-width: 1;" +
-                "-fx-background-radius: 2;" +
-                "-fx-border-radius: 2;"
-        );
-        return region;
-    }
-
-    private void installSeekRangeRestriction() {
-        seekSlider.addEventFilter(MouseEvent.MOUSE_PRESSED, e -> {
-            if (!isSeekPositionInsideLoop(e.getX())) {
-                e.consume();
-            }
-        });
-
-        seekSlider.addEventFilter(MouseEvent.MOUSE_DRAGGED, e -> {
-            if (mediaDuration == null
-                    || mediaDuration.isUnknown()
-                    || mediaDuration.isIndefinite()
-                    || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
-                return;
-            }
-
-            double aX = sliderTrackXForTime(pointA);
-            double bX = sliderTrackXForTime(pointB);
-
-            if (e.getX() < aX) {
-                seekSlider.setValue(pointA.toMillis());
-                e.consume();
-            } else if (e.getX() > bX) {
-                seekSlider.setValue(pointB.toMillis());
-                e.consume();
-            }
-        });
-    }
-
-    private boolean isSeekPositionInsideLoop(double mouseX) {
-        if (mediaDuration == null
-                || mediaDuration.isUnknown()
-                || mediaDuration.isIndefinite()
-                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
-            return false;
-        }
-
-        double aX = sliderTrackXForTime(pointA);
-        double bX = sliderTrackXForTime(pointB);
-        return mouseX >= aX && mouseX <= bX;
-    }
-
-    private double sliderTrackXForTime(Duration time) {
-        Node track = seekSlider.lookup(".track");
-        if (track == null || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
-            return 0;
-        }
-
-        Bounds trackBounds = track.getBoundsInParent();
-        double ratio = Math.max(0, Math.min(1, time.toMillis() / mediaDuration.toMillis()));
-        return trackBounds.getMinX() + ratio * trackBounds.getWidth();
-    }
-
     private VBox createSeekMarker(String text) {
         Label label = new Label(text);
         label.setStyle(
@@ -542,68 +467,11 @@ public class VideoLoopPlayer extends Application {
                 || seekMarkerOverlay.getWidth() <= 0) {
             aMarker.setVisible(false);
             bMarker.setVisible(false);
-            beforeARestrictedTrack.setVisible(false);
-            afterBRestrictedTrack.setVisible(false);
             return;
         }
 
         positionSeekMarker(aMarker, pointA);
         positionSeekMarker(bMarker, pointB);
-        updateRestrictedSeekTrack();
-    }
-
-    private void updateRestrictedSeekTrack() {
-        Node track = seekSlider.lookup(".track");
-        if (track == null) {
-            beforeARestrictedTrack.setVisible(false);
-            afterBRestrictedTrack.setVisible(false);
-            return;
-        }
-
-        Bounds trackSceneBounds = track.localToScene(track.getBoundsInLocal());
-        if (trackSceneBounds == null) {
-            beforeARestrictedTrack.setVisible(false);
-            afterBRestrictedTrack.setVisible(false);
-            return;
-        }
-
-        Point2D trackStart = seekMarkerOverlay.sceneToLocal(
-                trackSceneBounds.getMinX(),
-                trackSceneBounds.getMinY()
-        );
-        Point2D trackEnd = seekMarkerOverlay.sceneToLocal(
-                trackSceneBounds.getMaxX(),
-                trackSceneBounds.getMaxY()
-        );
-
-        Point2D aCenter = thumbCenterForTime(pointA);
-        Point2D bCenter = thumbCenterForTime(pointB);
-        if (aCenter == null || bCenter == null) {
-            beforeARestrictedTrack.setVisible(false);
-            afterBRestrictedTrack.setVisible(false);
-            return;
-        }
-
-        double trackY = trackStart.getY();
-        double trackHeight = Math.max(1, trackEnd.getY() - trackStart.getY());
-
-        double beforeWidth = Math.max(0, aCenter.getX() - trackStart.getX());
-        beforeARestrictedTrack.resizeRelocate(
-                trackStart.getX(),
-                trackY,
-                beforeWidth,
-                trackHeight
-        );
-        beforeARestrictedTrack.setVisible(beforeWidth > 0.5);
-
-        double afterWidth = Math.max(0, trackEnd.getX() - bCenter.getX());
-        afterBRestrictedTrack.resizeRelocate(
-                bCenter.getX(),
-                trackY,
-                afterWidth,
-                trackHeight
-        );
-        afterBRestrictedTrack.setVisible(afterWidth > 0.5);
     }
 
     private void positionSeekMarker(VBox marker, Duration time) {
