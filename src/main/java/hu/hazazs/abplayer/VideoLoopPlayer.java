@@ -599,10 +599,11 @@ public class VideoLoopPlayer extends Application {
             return;
         }
 
-        if (exactPausedSeekMillis != null) {
-            mediaPlayer.seek(Duration.millis(exactPausedSeekMillis));
-            exactPausedSeekMillis = null;
-        }
+        // The player is already at the paused/keyboard-seeked position.
+        // Re-seeking here is unnecessary and can emit a stale asynchronous
+        // timestamp from the previous playback state, which may falsely
+        // trigger the B -> A loop.
+        exactPausedSeekMillis = null;
 
         // If playback resumes exactly at B, it must first advance beyond B;
         // the current-time listener performs the B -> A jump on the first
