@@ -9,6 +9,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
+import javafx.scene.input.ScrollEvent;
 import javafx.scene.layout.*;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
@@ -33,9 +34,6 @@ public class VideoLoopPlayer extends Application {
     private final Label totalTimeLabel = new Label("00:00:00");
     private final Label fileLabel = new Label("No video loaded");
     private final Label statusLabel = new Label("Open a video to begin.");
-
-    private final Button playPauseButton = new Button("▶");
-    private final Button stopButton = new Button("■");
 
     private final TextField aField = new TextField("00:00:00");
     private final TextField bField = new TextField("00:00:00");
@@ -88,20 +86,6 @@ public class VideoLoopPlayer extends Application {
         HBox timeRow = new HBox(8, currentTimeLabel, seekSlider, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
 
-        playPauseButton.setDisable(true);
-        stopButton.setDisable(true);
-
-        playPauseButton.setMinSize(42, 36);
-        playPauseButton.setPrefSize(42, 36);
-        playPauseButton.setMaxSize(42, 36);
-
-        stopButton.setMinSize(42, 36);
-        stopButton.setPrefSize(42, 36);
-        stopButton.setMaxSize(42, 36);
-
-        playPauseButton.setOnAction(e -> togglePlayPause());
-        stopButton.setOnAction(e -> stopPlayback());
-
         volumeSlider.setPrefWidth(120);
         volumeSlider.valueProperty().addListener((obs, oldV, newV) -> {
             if (mediaPlayer != null) {
@@ -112,8 +96,7 @@ public class VideoLoopPlayer extends Application {
         Region playbackSpacer = new Region();
         HBox.setHgrow(playbackSpacer, Priority.ALWAYS);
 
-        HBox playbackRow = new HBox(8,
-                playPauseButton, stopButton, playbackSpacer, volumeSlider);
+        HBox playbackRow = new HBox(8, playbackSpacer, volumeSlider);
         playbackRow.setAlignment(Pos.CENTER_LEFT);
 
         aField.setPrefColumnCount(10);
@@ -166,6 +149,7 @@ public class VideoLoopPlayer extends Application {
 
         Scene scene = new Scene(root, 1000, 700);
         scene.addEventFilter(KeyEvent.KEY_PRESSED, this::handleKeyboard);
+        scene.addEventFilter(ScrollEvent.SCROLL, this::handleVolumeScroll);
         stage.setScene(scene);
         stage.setMinWidth(760);
         stage.setMinHeight(560);
@@ -203,8 +187,6 @@ public class VideoLoopPlayer extends Application {
 
             fileLabel.setText(file.getName());
             statusLabel.setText("Loading video…");
-            playPauseButton.setDisable(true);
-            stopButton.setDisable(true);
             seekSlider.setDisable(true);
 
             mediaPlayer.setOnReady(() -> {
@@ -218,8 +200,6 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
                 seekSlider.setValue(0);
                 seekSlider.setDisable(false);
-                playPauseButton.setDisable(false);
-                stopButton.setDisable(false);
                 statusLabel.setText("Ready. Set A and B, then enable Loop A–B.");
             });
 
@@ -239,14 +219,10 @@ public class VideoLoopPlayer extends Application {
                 }
             });
 
-            mediaPlayer.statusProperty().addListener((obs, oldStatus, newStatus) -> updatePlayButton());
-
             mediaPlayer.setOnEndOfMedia(() -> {
                 if (loopCheckBox.isSelected() && pointB.greaterThan(pointA)) {
                     mediaPlayer.seek(pointA);
                     mediaPlayer.play();
-                } else {
-                    updatePlayButton();
                 }
             });
 
@@ -290,15 +266,6 @@ public class VideoLoopPlayer extends Application {
             mediaPlayer.play();
         }
 
-        updatePlayButton();
-    }
-
-    private void stopPlayback() {
-        if (mediaPlayer == null) return;
-
-        mediaPlayer.pause();
-        mediaPlayer.seek(loopCheckBox.isSelected() ? pointA : Duration.ZERO);
-        updatePlayButton();
     }
 
     private void seekBySeconds(double seconds) {
@@ -313,7 +280,6 @@ public class VideoLoopPlayer extends Application {
         if (mediaPlayer == null) return;
 
         mediaPlayer.pause();
-        updatePlayButton();
         seekBySeconds(direction * FRAME_STEP_SECONDS);
     }
 
@@ -391,20 +357,17 @@ public class VideoLoopPlayer extends Application {
         }
     }
 
-    private void updatePlayButton() {
-        if (mediaPlayer == null) {
-            playPauseButton.setText("▶");
-            return;
-        }
-
-        playPauseButton.setText(
-                mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING ? "⏸" : "▶"
-        );
-    }
-
     private void showMediaError(Throwable error) {
         String message = error == null ? "Unknown media error" : error.getMessage();
         Platform.runLater(() -> statusLabel.setText("Media error: " + message));
+    }
+
+    private void handleVolumeScroll(ScrollEvent e) {
+        if (e.getDeltaY() == 0) return;
+
+        double step = e.getDeltaY() > 0 ? 5 : -5;
+        volumeSlider.setValue(Math.max(0, Math.min(100, volumeSlider.getValue() + step)));
+        e.consume();
     }
 
     private void handleKeyboard(KeyEvent e) {
