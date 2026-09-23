@@ -15,7 +15,6 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import uk.co.caprica.vlcj.factory.MediaPlayerFactory;
-import uk.co.caprica.vlcj.factory.discovery.NativeDiscovery;
 import uk.co.caprica.vlcj.javafx.videosurface.ImageViewVideoSurface;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
@@ -50,12 +49,11 @@ public class VideoLoopPlayer extends Application {
     private Duration pointB = Duration.ZERO;
     private Duration mediaDuration = Duration.ZERO;
     private boolean userSeeking;
+    private volatile boolean closing;
 
     @Override
     public void start(Stage stage) {
         stage.setTitle("A–B Loop Video Player");
-
-        initialiseVlc();
 
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: #17191d;");
@@ -76,7 +74,7 @@ public class VideoLoopPlayer extends Application {
         root.setCenter(videoPane);
 
         Button openButton = new Button("Open");
-        openButton.setDisable(mediaPlayer == null);
+        openButton.setDisable(true);
         openButton.setOnAction(e -> openVideo(stage));
 
         fileLabel.setStyle("-fx-text-fill: #d6d9df;");
@@ -164,9 +162,7 @@ public class VideoLoopPlayer extends Application {
         loopHint.setStyle("-fx-text-fill: #9ea4ae;");
         statusLabel.setStyle("-fx-text-fill: #c6cad1;");
 
-        if (mediaPlayer == null) {
-            statusLabel.setText("VLC was not found. Install 64-bit VLC and restart the player.");
-        }
+        statusLabel.setText("Initializing VLC…");
 
         VBox controls = new VBox(10, timeRow, playbackRow, new Separator(), loopGrid, loopHint, statusLabel);
         controls.setPadding(new Insets(10, 12, 12, 12));
@@ -186,65 +182,116 @@ public class VideoLoopPlayer extends Application {
         stage.setMaximized(true);
         stage.show();
 
-        stage.setOnCloseRequest(e -> disposePlayer());
+        initialiseVlcAsync(openButton);
+
+        stage.setOnCloseRequest(e -> {
+            closing = true;
+            disposePlayer();
+        });
     }
 
-    private void initialiseVlc() {
-        try {
-            if (!new NativeDiscovery().discover()) {
-                return;
+    private void initialiseVlcAsync(Button openButton) {
+        Thread initThread = new Thread(() -> {
+            MediaPlayerFactory factory = null;
+            EmbeddedMediaPlayer player = null;
+
+            try {
+                // MediaPlayerFactory performs VLC native discovery automatically.
+                factory = new MediaPlayerFactory();
+                player = factory.mediaPlayers().newEmbeddedMediaPlayer();
+
+                MediaPlayerFactory readyFactory = factory;
+                EmbeddedMediaPlayer readyPlayer = player;
+
+                Platform.runLater(() -> {
+                    if (closing) {
+                        releasePlayer(readyPlayer, readyFactory);
+                        return;
+                    }
+
+                    mediaPlayerFactory = readyFactory;
+                    mediaPlayer = readyPlayer;
+                    mediaPlayer.videoSurface().set(new ImageViewVideoSurface(mediaView));
+                    mediaPlayer.audio().setVolume((int) volumeSlider.getValue());
+                    attachMediaPlayerEvents();
+
+                    openButton.setDisable(false);
+                    statusLabel.setText("Open a video to begin.");
+                });
+            } catch (Throwable ex) {
+                releasePlayer(player, factory);
+
+                String detail = ex.getMessage();
+                if (detail == null || detail.isBlank()) {
+                    detail = ex.getClass().getSimpleName();
+                }
+                String message = detail;
+
+                Platform.runLater(() -> {
+                    if (!closing) {
+                        openButton.setDisable(true);
+                        statusLabel.setText("VLC initialization failed: " + message);
+                    }
+                });
+            }
+        }, "vlc-init");
+
+        initThread.setDaemon(true);
+        initThread.start();
+    }
+
+    private void attachMediaPlayerEvents() {
+        mediaPlayer.events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
+            @Override
+            public void lengthChanged(MediaPlayer mediaPlayer, long newLength) {
+                Platform.runLater(() -> onLengthChanged(newLength));
             }
 
-            mediaPlayerFactory = new MediaPlayerFactory();
-            mediaPlayer = mediaPlayerFactory.mediaPlayers().newEmbeddedMediaPlayer();
-            mediaPlayer.videoSurface().set(new ImageViewVideoSurface(mediaView));
-            mediaPlayer.audio().setVolume((int) volumeSlider.getValue());
-
-            mediaPlayer.events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
-                @Override
-                public void lengthChanged(MediaPlayer mediaPlayer, long newLength) {
-                    Platform.runLater(() -> onLengthChanged(newLength));
-                }
-
-                @Override
-                public void timeChanged(MediaPlayer mediaPlayer, long newTime) {
-                    Platform.runLater(() -> onTimeChanged(newTime));
-                }
-
-                @Override
-                public void playing(MediaPlayer mediaPlayer) {
-                    Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
-                }
-
-                @Override
-                public void paused(MediaPlayer mediaPlayer) {
-                    Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
-                }
-
-                @Override
-                public void stopped(MediaPlayer mediaPlayer) {
-                    Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
-                }
-
-                @Override
-                public void finished(MediaPlayer mediaPlayer) {
-                    Platform.runLater(VideoLoopPlayer.this::onFinished);
-                }
-
-                @Override
-                public void error(MediaPlayer mediaPlayer) {
-                    Platform.runLater(() ->
-                            statusLabel.setText("VLC could not play this video."));
-                }
-            });
-        } catch (RuntimeException ex) {
-            if (mediaPlayer != null) {
-                mediaPlayer.release();
-                mediaPlayer = null;
+            @Override
+            public void timeChanged(MediaPlayer mediaPlayer, long newTime) {
+                Platform.runLater(() -> onTimeChanged(newTime));
             }
-            if (mediaPlayerFactory != null) {
-                mediaPlayerFactory.release();
-                mediaPlayerFactory = null;
+
+            @Override
+            public void playing(MediaPlayer mediaPlayer) {
+                Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
+            }
+
+            @Override
+            public void paused(MediaPlayer mediaPlayer) {
+                Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
+            }
+
+            @Override
+            public void stopped(MediaPlayer mediaPlayer) {
+                Platform.runLater(VideoLoopPlayer.this::updatePlayButton);
+            }
+
+            @Override
+            public void finished(MediaPlayer mediaPlayer) {
+                Platform.runLater(VideoLoopPlayer.this::onFinished);
+            }
+
+            @Override
+            public void error(MediaPlayer mediaPlayer) {
+                Platform.runLater(() ->
+                        statusLabel.setText("VLC could not play this video."));
+            }
+        });
+    }
+
+    private void releasePlayer(EmbeddedMediaPlayer player, MediaPlayerFactory factory) {
+        if (player != null) {
+            try {
+                player.release();
+            } catch (Throwable ignored) {
+            }
+        }
+
+        if (factory != null) {
+            try {
+                factory.release();
+            } catch (Throwable ignored) {
             }
         }
     }
