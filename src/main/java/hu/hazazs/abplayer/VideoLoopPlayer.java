@@ -598,15 +598,21 @@ public class VideoLoopPlayer extends Application {
             return null;
         }
 
-        Point2D travelRange = sliderThumbTravelRangeInScene();
-        if (travelRange == null) return null;
+        Point2D visibleTrackRange = sliderVisibleTrackRangeInScene();
+        Point2D thumbTravelRange = sliderThumbTravelRangeInScene();
+        if (visibleTrackRange == null || thumbTravelRange == null) return null;
 
-        double startX = travelRange.getX();
-        double endX = travelRange.getY();
-        double travelWidth = endX - startX;
+        if (sceneX <= thumbTravelRange.getX()) {
+            return Duration.ZERO;
+        }
+        if (sceneX >= thumbTravelRange.getY()) {
+            return mediaDuration;
+        }
+
+        double travelWidth = thumbTravelRange.getY() - thumbTravelRange.getX();
         if (travelWidth <= 0) return null;
 
-        double ratio = (sceneX - startX) / travelWidth;
+        double ratio = (sceneX - thumbTravelRange.getX()) / travelWidth;
         ratio = Math.max(0, Math.min(1, ratio));
         return Duration.millis(ratio * mediaDuration.toMillis());
     }
@@ -658,22 +664,55 @@ public class VideoLoopPlayer extends Application {
         }
 
         Node thumb = seekSlider.lookup(".thumb");
-        Point2D travelRange = sliderThumbTravelRangeInScene();
-        if (thumb == null || travelRange == null || seekSlider.getScene() == null) {
+        Point2D visibleTrackRange = sliderVisibleTrackRangeInScene();
+        Point2D thumbTravelRange = sliderThumbTravelRangeInScene();
+        if (thumb == null
+                || visibleTrackRange == null
+                || thumbTravelRange == null
+                || seekSlider.getScene() == null) {
             return null;
         }
 
         Bounds thumbSceneBounds = thumb.localToScene(thumb.getBoundsInLocal());
         if (thumbSceneBounds == null) return null;
 
-        double ratio = Math.max(0, Math.min(1, time.toMillis() / mediaDuration.toMillis()));
-        double sceneX = travelRange.getX() + ratio * (travelRange.getY() - travelRange.getX());
+        double millis = time.toMillis();
+        double durationMillis = mediaDuration.toMillis();
+        double sceneX;
+
+        if (millis <= 0) {
+            // A at zero belongs on the literal first pixel of the visible track.
+            sceneX = visibleTrackRange.getX();
+        } else if (millis >= durationMillis) {
+            // B at the duration belongs on the literal last pixel of the visible track.
+            sceneX = visibleTrackRange.getY();
+        } else {
+            // Interior markers use the exact same X coordinate as the slider
+            // thumb center for the same timestamp.
+            double ratio = millis / durationMillis;
+            sceneX = thumbTravelRange.getX()
+                    + ratio * (thumbTravelRange.getY() - thumbTravelRange.getX());
+        }
 
         Point2D markerPoint = seekMarkerOverlay.sceneToLocal(
                 sceneX,
                 thumbSceneBounds.getCenterY()
         );
         return new Point2D(markerPoint.getX(), markerPoint.getY());
+    }
+
+    private Point2D sliderVisibleTrackRangeInScene() {
+        Node trackNode = seekSlider.lookup(".track");
+        if (trackNode == null || seekSlider.getScene() == null) {
+            return null;
+        }
+
+        Bounds trackSceneBounds = trackNode.localToScene(trackNode.getBoundsInLocal());
+        if (trackSceneBounds == null || trackSceneBounds.getWidth() <= 0) {
+            return null;
+        }
+
+        return new Point2D(trackSceneBounds.getMinX(), trackSceneBounds.getMaxX());
     }
 
     private Point2D sliderThumbTravelRangeInScene() {
