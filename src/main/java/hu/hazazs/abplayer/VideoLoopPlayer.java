@@ -56,6 +56,7 @@ public class VideoLoopPlayer extends Application {
     private boolean userSeeking;
     private boolean bypassLoopUntilEnd;
     private boolean atVideoEnd;
+    private boolean restartingFromEnd;
     private Long exactPausedSeekMillis;
 
     private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
@@ -243,6 +244,7 @@ public class VideoLoopPlayer extends Application {
                 pointB = mediaDuration;
                 bypassLoopUntilEnd = false;
                 atVideoEnd = false;
+                restartingFromEnd = false;
                 exactPausedSeekMillis = null;
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
@@ -258,6 +260,10 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
+                if (restartingFromEnd && !isAtActualVideoEnd()) {
+                    restartingFromEnd = false;
+                }
+
                 if (!bypassLoopUntilEnd
                         && pointB.greaterThan(pointA)
                         && newTime.greaterThan(pointB)) {
@@ -381,6 +387,7 @@ public class VideoLoopPlayer extends Application {
     private void seekFromProgressBar(Duration target) {
         exactPausedSeekMillis = null;
         atVideoEnd = false;
+        restartingFromEnd = false;
         bypassLoopUntilEnd = target.greaterThan(pointB);
         mediaPlayer.seek(target);
     }
@@ -574,9 +581,10 @@ public class VideoLoopPlayer extends Application {
 
         // JavaFX may still report PLAYING after end-of-media, so the real-end
         // check must happen before the normal PLAYING -> pause branch.
-        if (atVideoEnd || isAtActualVideoEnd()) {
+        if (atVideoEnd || (!restartingFromEnd && isAtActualVideoEnd())) {
             bypassLoopUntilEnd = false;
             atVideoEnd = false;
+            restartingFromEnd = true;
             exactPausedSeekMillis = null;
 
             mediaPlayer.stop();
@@ -714,6 +722,7 @@ public class VideoLoopPlayer extends Application {
 
         bypassLoopUntilEnd = false;
         atVideoEnd = false;
+        restartingFromEnd = false;
         seekSlider.setValue(logicalCurrentTime().toMillis());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
