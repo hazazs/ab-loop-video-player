@@ -56,7 +56,7 @@ public class VideoLoopPlayer extends Application {
 
     @Override
     public void start(Stage stage) {
-        stage.setTitle("A–B Loop Video Player");
+        stage.setTitle("A-B Loop Player");
         setWindowIcon(stage);
 
         BorderPane root = new BorderPane();
@@ -461,7 +461,8 @@ public class VideoLoopPlayer extends Application {
         double x = ratio * overlayWidth - markerWidth / 2.0;
         x = Math.max(0, Math.min(x, overlayWidth - markerWidth));
 
-        double y = Math.max(0, (seekMarkerOverlay.getHeight() - marker.prefHeight(-1)) / 2.0);
+        double markerLineHeight = 22.0;
+        double y = Math.max(0, seekMarkerOverlay.getHeight() / 2.0 - markerLineHeight / 2.0);
         marker.relocate(x, y);
         marker.setVisible(true);
     }
