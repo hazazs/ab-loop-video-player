@@ -56,7 +56,6 @@ public class VideoLoopPlayer extends Application {
     private boolean userSeeking;
     private boolean bypassLoopUntilEnd;
     private boolean atVideoEnd;
-    private boolean restartingFromEnd;
     private Long exactPausedSeekMillis;
 
     private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
@@ -244,7 +243,6 @@ public class VideoLoopPlayer extends Application {
                 pointB = mediaDuration;
                 bypassLoopUntilEnd = false;
                 atVideoEnd = false;
-                restartingFromEnd = false;
                 exactPausedSeekMillis = null;
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
@@ -260,10 +258,6 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
-                if (restartingFromEnd && !isAtActualVideoEnd()) {
-                    restartingFromEnd = false;
-                }
-
                 if (!bypassLoopUntilEnd
                         && pointB.greaterThan(pointA)
                         && newTime.greaterThan(pointB)) {
@@ -387,7 +381,6 @@ public class VideoLoopPlayer extends Application {
     private void seekFromProgressBar(Duration target) {
         exactPausedSeekMillis = null;
         atVideoEnd = false;
-        restartingFromEnd = false;
         bypassLoopUntilEnd = target.greaterThan(pointB);
         mediaPlayer.seek(target);
     }
@@ -579,19 +572,18 @@ public class VideoLoopPlayer extends Application {
     private void togglePlayPause() {
         if (mediaPlayer == null) return;
 
-        // JavaFX may still report PLAYING after end-of-media, so the real-end
-        // check must happen before the normal PLAYING -> pause branch.
-        if (atVideoEnd || (!restartingFromEnd && isAtActualVideoEnd())) {
+        // Consume the real end-of-media state exactly once. Do not infer end
+        // from currentTime, because JavaFX can briefly expose the old end
+        // timestamp after playback has already restarted.
+        if (atVideoEnd) {
             bypassLoopUntilEnd = false;
             atVideoEnd = false;
-            restartingFromEnd = true;
             exactPausedSeekMillis = null;
 
             mediaPlayer.stop();
             seekSlider.setValue(0);
             currentTimeLabel.setText(formatDuration(Duration.ZERO));
 
-            // stop() resets playback to startTime; play() then restarts from 0.
             Platform.runLater(() -> {
                 if (mediaPlayer != null) {
                     mediaPlayer.play();
@@ -612,24 +604,10 @@ public class VideoLoopPlayer extends Application {
             exactPausedSeekMillis = null;
         }
 
-        // Do not test B here. If playback resumes exactly at B, it must first
-        // advance beyond B; the current-time listener performs the B -> A jump
-        // on the first update strictly after B.
+        // If playback resumes exactly at B, it must first advance beyond B;
+        // the current-time listener performs the B -> A jump on the first
+        // update strictly after B.
         mediaPlayer.play();
-    }
-
-    private boolean isAtActualVideoEnd() {
-        if (mediaPlayer == null
-                || mediaDuration == null
-                || mediaDuration.isUnknown()
-                || mediaDuration.isIndefinite()
-                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
-            return false;
-        }
-
-        long currentMillis = Math.round(mediaPlayer.getCurrentTime().toMillis());
-        long endMillis = Math.round(mediaDuration.toMillis());
-        return currentMillis >= Math.max(0, endMillis - 1);
     }
 
     private void seekBySeconds(double seconds) {
@@ -722,7 +700,6 @@ public class VideoLoopPlayer extends Application {
 
         bypassLoopUntilEnd = false;
         atVideoEnd = false;
-        restartingFromEnd = false;
         seekSlider.setValue(logicalCurrentTime().toMillis());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
