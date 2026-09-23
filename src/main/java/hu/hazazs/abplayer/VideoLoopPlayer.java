@@ -124,6 +124,13 @@ public class VideoLoopPlayer extends Application {
         seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> updateLoopMarkers());
         seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> updateLoopMarkers());
 
+        Text widestTimeLabel = new Text("88:88:88.888");
+        widestTimeLabel.setFont(currentTimeLabel.getFont());
+        double timestampLabelWidth = Math.ceil(widestTimeLabel.getLayoutBounds().getWidth()) + 8;
+
+        configureTimestampLabel(currentTimeLabel, timestampLabelWidth, Pos.CENTER_LEFT);
+        configureTimestampLabel(totalTimeLabel, timestampLabelWidth, Pos.CENTER_RIGHT);
+
         HBox timeRow = new HBox(8, currentTimeLabel, seekBarPane, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
 
@@ -173,6 +180,7 @@ public class VideoLoopPlayer extends Application {
         bRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox controls = new VBox(8, timeRow, aRow, bRow);
+        VBox.setMargin(aRow, new Insets(5, 0, 0, 0));
         controls.setPadding(new Insets(10, 12, 12, 12));
         controls.setStyle(
                 "-fx-background-color: #22252b;" +
@@ -435,6 +443,13 @@ public class VideoLoopPlayer extends Application {
         field.setMaxWidth(width);
     }
 
+    private void configureTimestampLabel(Label label, double width, Pos alignment) {
+        label.setMinWidth(width);
+        label.setPrefWidth(width);
+        label.setMaxWidth(width);
+        label.setAlignment(alignment);
+    }
+
     private void configureStaticSliderAppearance(Slider slider) {
         applyStaticSliderAppearance(slider);
 
@@ -511,6 +526,7 @@ public class VideoLoopPlayer extends Application {
 
         VBox marker = new VBox(0, line, label);
         marker.setAlignment(Pos.TOP_CENTER);
+        marker.setManaged(false);
         marker.setMinWidth(14);
         marker.setPickOnBounds(true);
         marker.setMouseTransparent(false);
