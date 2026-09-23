@@ -271,6 +271,24 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.applyCss();
                 seekSlider.layout();
                 updateLoopMarkers();
+
+                // On the first opened video, the JavaFX slider skin can still
+                // finish its final geometry on the following UI pulses. Re-read
+                // the actual track/line bounds after layout has settled so the
+                // initial A/B markers land on the same exact pixels as later
+                // drag/set operations.
+                Platform.runLater(() -> {
+                    seekSlider.applyCss();
+                    seekSlider.layout();
+                    updateLoopMarkers();
+
+                    Platform.runLater(() -> {
+                        seekSlider.applyCss();
+                        seekSlider.layout();
+                        updateLoopMarkers();
+                    });
+                });
+
                 mediaPlayer.play();
             });
 
