@@ -3,6 +3,7 @@ package hu.hazazs.abplayer;
 import javafx.animation.PauseTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
@@ -489,6 +490,13 @@ public class VideoLoopPlayer extends Application {
                     "-fx-background-radius: 20;" +
                     "-fx-border-radius: 20;" +
                     "-fx-effect: null;"
+            );
+
+            thumb.cursorProperty().unbind();
+            thumb.cursorProperty().bind(
+                    Bindings.when(thumb.pressedProperty())
+                            .then(Cursor.CLOSED_HAND)
+                            .otherwise(Cursor.DEFAULT)
             );
         }
     }
