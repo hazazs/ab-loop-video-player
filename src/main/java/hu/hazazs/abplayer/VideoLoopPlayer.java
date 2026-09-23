@@ -288,7 +288,7 @@ public class VideoLoopPlayer extends Application {
 
         pointA = mediaPlayer.getCurrentTime();
         aField.setText(formatDuration(pointA));
-        validateLoopState();
+        validateLoopRange();
     }
 
     private void setPointBFromCurrent() {
@@ -296,7 +296,7 @@ public class VideoLoopPlayer extends Application {
 
         pointB = mediaPlayer.getCurrentTime();
         bField.setText(formatDuration(pointB));
-        validateLoopState();
+        validateLoopRange();
     }
 
     private void applyTypedPoints() {
@@ -311,7 +311,7 @@ public class VideoLoopPlayer extends Application {
             pointB = b;
             aField.setText(formatDuration(pointA));
             bField.setText(formatDuration(pointB));
-            validateLoopState();
+            validateLoopRange();
         } catch (IllegalArgumentException ex) {
             statusLabel.setText("Invalid time. Use HH:MM:SS or HH:MM:SS.mmm");
         }
