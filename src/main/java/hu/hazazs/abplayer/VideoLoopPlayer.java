@@ -49,6 +49,8 @@ public class VideoLoopPlayer extends Application {
 
     private final TextField aField = new TextField("00:00:00.000");
     private final TextField bField = new TextField("00:00:00.000");
+    private final Button setAButton = new Button("Set");
+    private final Button setBButton = new Button("Set");
 
     private Duration pointA = Duration.ZERO;
     private Duration pointB = Duration.ZERO;
@@ -137,9 +139,7 @@ public class VideoLoopPlayer extends Application {
         configureTimestampField(aField, timestampFieldWidth);
         configureTimestampField(bField, timestampFieldWidth);
 
-        Button setAButton = new Button("Set");
         Button clearAButton = new Button("Clear");
-        Button setBButton = new Button("Set");
         Button clearBButton = new Button("Clear");
 
         configureStaticButton(setAButton);
@@ -151,6 +151,12 @@ public class VideoLoopPlayer extends Application {
         clearAButton.setOnAction(e -> clearPointA());
         setBButton.setOnAction(e -> setPointBFromCurrent());
         clearBButton.setOnAction(e -> clearPointB());
+
+        setAButton.setDisable(true);
+        setBButton.setDisable(true);
+        seekSlider.valueProperty().addListener((obs, oldValue, newValue) ->
+                updateSetButtonAvailability(newValue.doubleValue())
+        );
 
         aField.setOnAction(e -> applyTypedPoints());
         bField.setOnAction(e -> applyTypedPoints());
@@ -251,6 +257,7 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
                 seekSlider.setValue(pointA.toMillis());
                 seekSlider.setDisable(false);
+                updateSetButtonAvailability(seekSlider.getValue());
                 seekSlider.applyCss();
                 seekSlider.layout();
                 updateLoopMarkers();
@@ -702,6 +709,7 @@ public class VideoLoopPlayer extends Application {
         bypassLoopUntilEnd = false;
         atVideoEnd = false;
         seekSlider.setValue(logicalCurrentTime().toMillis());
+        updateSetButtonAvailability(seekSlider.getValue());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = logicalCurrentTime();
@@ -738,16 +746,46 @@ public class VideoLoopPlayer extends Application {
         System.err.println("Media error: " + message);
     }
 
+    private void updateSetButtonAvailability(double selectedMillis) {
+        if (mediaPlayer == null
+                || mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
+            setAButton.setDisable(true);
+            setBButton.setDisable(true);
+            return;
+        }
+
+        setBButton.setDisable(selectedMillis < pointA.toMillis());
+        setAButton.setDisable(selectedMillis > pointB.toMillis());
+    }
+
+    private void changeVolume(double delta) {
+        volumeSlider.setValue(Math.max(0, Math.min(100, volumeSlider.getValue() + delta)));
+    }
+
     private void handleVolumeScroll(ScrollEvent e) {
         if (e.getDeltaY() == 0) return;
 
-        double step = e.getDeltaY() > 0 ? 5 : -5;
-        volumeSlider.setValue(Math.max(0, Math.min(100, volumeSlider.getValue() + step)));
+        changeVolume(e.getDeltaY() > 0 ? 5 : -5);
         e.consume();
     }
 
     private void handleKeyboard(KeyEvent e) {
         if (e.getTarget() instanceof TextInputControl) return;
+
+        if (e.getCode() == KeyCode.UP) {
+            changeVolume(5);
+            e.consume();
+            return;
+        }
+
+        if (e.getCode() == KeyCode.DOWN) {
+            changeVolume(-5);
+            e.consume();
+            return;
+        }
 
         if (e.getCode() == KeyCode.SPACE) {
             togglePlayPause();
