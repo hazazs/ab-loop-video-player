@@ -35,6 +35,7 @@ import java.util.Locale;
 public class VideoLoopPlayer extends Application {
 
     private static final double FRAME_STEP_SECONDS = 1.0 / 30.0;
+    private static final double MAX_NATURAL_PLAYBACK_STEP_MILLIS = 3000.0;
 
     private MediaPlayer mediaPlayer;
     private final MediaView mediaView = new MediaView();
@@ -272,7 +273,9 @@ public class VideoLoopPlayer extends Application {
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
                 if (!bypassLoopUntilEnd
                         && pointB.greaterThan(pointA)
-                        && newTime.greaterThan(pointB)) {
+                        && oldTime.lessThanOrEqualTo(pointB)
+                        && newTime.greaterThan(pointB)
+                        && isNaturalPlaybackStep(oldTime, newTime)) {
                     exactPausedSeekMillis = null;
                     atVideoEnd = false;
 
@@ -623,6 +626,15 @@ public class VideoLoopPlayer extends Application {
         mediaPlayer.play();
     }
 
+    private boolean isNaturalPlaybackStep(Duration oldTime, Duration newTime) {
+        if (mediaPlayer == null || mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
+            return false;
+        }
+
+        double deltaMillis = newTime.toMillis() - oldTime.toMillis();
+        return deltaMillis > 0 && deltaMillis <= MAX_NATURAL_PLAYBACK_STEP_MILLIS;
+    }
+
     private void seekBySeconds(double seconds) {
         if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
 
@@ -635,6 +647,7 @@ public class VideoLoopPlayer extends Application {
         long targetMillis = Math.max(0, Math.min(baseMillis + deltaMillis, maxMillis));
 
         atVideoEnd = targetMillis >= maxMillis;
+        bypassLoopUntilEnd = targetMillis > pointB.toMillis();
         Duration target = Duration.millis(targetMillis);
 
         if (mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING) {
