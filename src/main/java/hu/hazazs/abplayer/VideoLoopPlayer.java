@@ -864,7 +864,7 @@ public class VideoLoopPlayer extends Application {
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = logicalCurrentTime();
-        if (current.lessThan(pointA) || current.greaterThan(pointB)) {
+        if (current.greaterThan(pointB)) {
             mediaPlayer.seek(pointA);
 
             if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
