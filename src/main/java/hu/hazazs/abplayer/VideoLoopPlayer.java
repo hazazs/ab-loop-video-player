@@ -636,20 +636,34 @@ public class VideoLoopPlayer extends Application {
         marker.applyCss();
         marker.autosize();
 
-        Point2D thumbCenter = thumbCenterForTime(time);
-        if (thumbCenter == null) {
+        Point2D targetPoint = thumbCenterForTime(time);
+        if (targetPoint == null || marker.getChildren().isEmpty()) {
             marker.setVisible(false);
             return;
         }
 
-        double markerWidth = Math.max(1, marker.prefWidth(-1));
-        double markerLineHeight = 22.0;
+        Node line = marker.getChildren().get(0);
+        Bounds lineBounds = line.getBoundsInParent();
 
-        // The marker line is the first VBox child and is centered horizontally.
-        // Position the VBox so the line's exact center pixel matches the slider
-        // thumb's exact center for the same timestamp.
-        double x = thumbCenter.getX() - markerWidth / 2.0;
-        double y = thumbCenter.getY() - markerLineHeight / 2.0;
+        double millis = time.toMillis();
+        double durationMillis = mediaDuration.toMillis();
+        double x;
+
+        if (millis <= 0) {
+            // Put the left edge of A's green line on the literal first pixel
+            // of the visible progress track.
+            x = targetPoint.getX() - lineBounds.getMinX();
+        } else if (millis >= durationMillis) {
+            // Put the right edge of B's green line on the literal last pixel
+            // of the visible progress track.
+            x = targetPoint.getX() - lineBounds.getMaxX();
+        } else {
+            // For interior A/B values, the line center must cross the slider
+            // thumb's exact horizontal center for that same timestamp.
+            x = targetPoint.getX() - lineBounds.getCenterX();
+        }
+
+        double y = targetPoint.getY() - lineBounds.getCenterY();
 
         marker.relocate(x, y);
         marker.setVisible(true);
