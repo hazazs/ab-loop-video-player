@@ -104,6 +104,7 @@ public class VideoLoopPlayer extends Application {
 
         seekSlider.setDisable(true);
         seekSlider.setMaxWidth(Double.MAX_VALUE);
+        seekSlider.setFocusTraversable(false);
 
         seekMarkerOverlay.setMouseTransparent(true);
         seekMarkerOverlay.getChildren().addAll(aMarker, bMarker);
@@ -124,6 +125,7 @@ public class VideoLoopPlayer extends Application {
         timeRow.setAlignment(Pos.CENTER);
 
         volumeSlider.setPrefWidth(120);
+        volumeSlider.setFocusTraversable(false);
         volumeSlider.valueProperty().addListener((obs, oldV, newV) -> {
             if (mediaPlayer != null) {
                 mediaPlayer.setVolume(newV.doubleValue() / 100.0);
@@ -200,6 +202,8 @@ public class VideoLoopPlayer extends Application {
         stage.show();
         root.applyCss();
         root.layout();
+        configureStaticSliderAppearance(seekSlider);
+        configureStaticSliderAppearance(volumeSlider);
         Platform.runLater(() -> stage.setOpacity(1));
 
         stage.setOnCloseRequest(e -> disposePlayer());
@@ -361,6 +365,48 @@ public class VideoLoopPlayer extends Application {
         field.setMinWidth(width);
         field.setPrefWidth(width);
         field.setMaxWidth(width);
+    }
+
+    private void configureStaticSliderAppearance(Slider slider) {
+        applyStaticSliderAppearance(slider);
+
+        slider.skinProperty().addListener((obs, oldSkin, newSkin) ->
+                Platform.runLater(() -> applyStaticSliderAppearance(slider))
+        );
+    }
+
+    private void applyStaticSliderAppearance(Slider slider) {
+        slider.setStyle(
+                "-fx-focus-color: transparent;" +
+                "-fx-faint-focus-color: transparent;" +
+                "-fx-effect: null;"
+        );
+
+        Region track = (Region) slider.lookup(".track");
+        if (track != null) {
+            track.setStyle(
+                    "-fx-background-color: #b8b8b8;" +
+                    "-fx-border-color: black;" +
+                    "-fx-border-width: 1;" +
+                    "-fx-background-insets: 0;" +
+                    "-fx-background-radius: 2;" +
+                    "-fx-border-radius: 2;" +
+                    "-fx-effect: null;"
+            );
+        }
+
+        Region thumb = (Region) slider.lookup(".thumb");
+        if (thumb != null) {
+            thumb.setStyle(
+                    "-fx-background-color: #f4f4f4;" +
+                    "-fx-border-color: black;" +
+                    "-fx-border-width: 1;" +
+                    "-fx-background-insets: 0;" +
+                    "-fx-background-radius: 20;" +
+                    "-fx-border-radius: 20;" +
+                    "-fx-effect: null;"
+            );
+        }
     }
 
     private void configureStaticButton(Button button) {
