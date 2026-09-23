@@ -14,6 +14,7 @@ import javafx.scene.layout.*;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.media.MediaView;
+import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -102,8 +103,12 @@ public class VideoLoopPlayer extends Application {
         HBox playbackRow = new HBox(8, playbackSpacer, volumeSlider);
         playbackRow.setAlignment(Pos.CENTER_LEFT);
 
-        aField.setPrefColumnCount(12);
-        bField.setPrefColumnCount(12);
+        Text widestTimestamp = new Text("88:88:88.888");
+        widestTimestamp.setFont(aField.getFont());
+        double timestampFieldWidth = Math.ceil(widestTimestamp.getLayoutBounds().getWidth()) + 20;
+
+        configureTimestampField(aField, timestampFieldWidth);
+        configureTimestampField(bField, timestampFieldWidth);
 
         Button setAButton = new Button("Set");
         Button clearAButton = new Button("Clear");
@@ -236,34 +241,81 @@ public class VideoLoopPlayer extends Application {
 
     private void installSeekBehavior() {
         Tooltip seekTooltip = new Tooltip("00:00:00.000");
-        seekTooltip.setShowDelay(Duration.ZERO);
-        seekTooltip.setShowDuration(Duration.INDEFINITE);
-        Tooltip.install(seekSlider, seekTooltip);
+        seekTooltip.setAutoHide(false);
 
-        seekSlider.setOnMouseMoved(e -> {
-            double width = seekSlider.getWidth();
-            if (width <= 0) return;
-
-            double ratio = Math.max(0, Math.min(1, e.getX() / width));
-            double hoverMillis = seekSlider.getMin()
-                    + ratio * (seekSlider.getMax() - seekSlider.getMin());
-            seekTooltip.setText(formatDuration(Duration.millis(hoverMillis)));
+        seekSlider.setOnMouseEntered(e -> {
+            if (!userSeeking) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
+            }
         });
 
-        seekSlider.setOnMousePressed(e -> userSeeking = true);
-        seekSlider.setOnMouseDragged(e -> userSeeking = true);
+        seekSlider.setOnMouseMoved(e -> {
+            if (!userSeeking) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
+            }
+        });
+
+        seekSlider.setOnMouseExited(e -> {
+            if (!userSeeking) {
+                seekTooltip.hide();
+            }
+        });
+
+        seekSlider.setOnMousePressed(e -> {
+            userSeeking = true;
+            showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
+        });
+
+        seekSlider.setOnMouseDragged(e -> {
+            userSeeking = true;
+            showSeekTooltip(
+                    seekTooltip,
+                    e.getScreenX(),
+                    e.getScreenY(),
+                    Duration.millis(seekSlider.getValue())
+            );
+        });
+
         seekSlider.setOnMouseReleased(e -> {
             if (mediaPlayer != null) {
                 mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
             }
             userSeeking = false;
+
+            if (seekSlider.isHover()) {
+                showSeekTooltip(seekTooltip, e.getScreenX(), e.getScreenY(), hoverTimeAt(e.getX()));
+            } else {
+                seekTooltip.hide();
+            }
         });
+
         seekSlider.valueChangingProperty().addListener((obs, was, changing) -> {
             userSeeking = changing;
             if (!changing && mediaPlayer != null) {
                 mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
             }
         });
+    }
+
+    private Duration hoverTimeAt(double mouseX) {
+        double width = seekSlider.getWidth();
+        if (width <= 0) return Duration.ZERO;
+
+        double ratio = Math.max(0, Math.min(1, mouseX / width));
+        double hoverMillis = seekSlider.getMin()
+                + ratio * (seekSlider.getMax() - seekSlider.getMin());
+        return Duration.millis(hoverMillis);
+    }
+
+    private void showSeekTooltip(Tooltip tooltip, double screenX, double screenY, Duration time) {
+        tooltip.setText(formatDuration(time));
+        tooltip.show(seekSlider.getScene().getWindow(), screenX + 10, screenY - 35);
+    }
+
+    private void configureTimestampField(TextField field, double width) {
+        field.setMinWidth(width);
+        field.setPrefWidth(width);
+        field.setMaxWidth(width);
     }
 
     private void togglePlayPause() {
