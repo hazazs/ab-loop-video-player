@@ -31,10 +31,8 @@ public class VideoLoopPlayer extends Application {
     private final Label fileLabel = new Label("No video loaded");
     private final Label statusLabel = new Label("Open an MP4 video to begin.");
 
-    private final Button playPauseButton = new Button("▶ Play");
-    private final Button stopButton = new Button("■ Stop");
-    private final Button backButton = new Button("↶ 10s");
-    private final Button forwardButton = new Button("10s ↷");
+    private final Button playPauseButton = new Button("▶");
+    private final Button stopButton = new Button("■");
 
     private final TextField aField = new TextField("00:00:00");
     private final TextField bField = new TextField("00:00:00");
@@ -82,13 +80,17 @@ public class VideoLoopPlayer extends Application {
 
         playPauseButton.setDisable(true);
         stopButton.setDisable(true);
-        backButton.setDisable(true);
-        forwardButton.setDisable(true);
+
+        playPauseButton.setMinSize(42, 36);
+        playPauseButton.setPrefSize(42, 36);
+        playPauseButton.setMaxSize(42, 36);
+
+        stopButton.setMinSize(42, 36);
+        stopButton.setPrefSize(42, 36);
+        stopButton.setMaxSize(42, 36);
 
         playPauseButton.setOnAction(e -> togglePlayPause());
         stopButton.setOnAction(e -> stopPlayback());
-        backButton.setOnAction(e -> jumpSeconds(-10));
-        forwardButton.setOnAction(e -> jumpSeconds(10));
 
         volumeSlider.setPrefWidth(120);
         volumeSlider.valueProperty().addListener((obs, oldV, newV) -> {
@@ -97,10 +99,11 @@ public class VideoLoopPlayer extends Application {
             }
         });
 
-        Label volumeLabel = new Label("Volume");
+        Region playbackSpacer = new Region();
+        HBox.setHgrow(playbackSpacer, Priority.ALWAYS);
+
         HBox playbackRow = new HBox(8,
-                backButton, playPauseButton, stopButton, forwardButton,
-                new Separator(), volumeLabel, volumeSlider);
+                playPauseButton, stopButton, playbackSpacer, volumeSlider);
         playbackRow.setAlignment(Pos.CENTER_LEFT);
 
         aField.setPrefColumnCount(10);
@@ -185,8 +188,6 @@ public class VideoLoopPlayer extends Application {
             statusLabel.setText("Loading video…");
             playPauseButton.setDisable(true);
             stopButton.setDisable(true);
-            backButton.setDisable(true);
-            forwardButton.setDisable(true);
             seekSlider.setDisable(true);
 
             mediaPlayer.setOnReady(() -> {
@@ -202,8 +203,6 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setDisable(false);
                 playPauseButton.setDisable(false);
                 stopButton.setDisable(false);
-                backButton.setDisable(false);
-                forwardButton.setDisable(false);
                 statusLabel.setText("Ready. Set A and B, then enable Loop A–B.");
             });
 
@@ -280,13 +279,6 @@ public class VideoLoopPlayer extends Application {
         updatePlayButton();
     }
 
-    private void jumpSeconds(double seconds) {
-        if (mediaPlayer == null) return;
-        double target = mediaPlayer.getCurrentTime().toSeconds() + seconds;
-        target = Math.max(0, Math.min(target, mediaDuration.toSeconds()));
-        mediaPlayer.seek(Duration.seconds(target));
-    }
-
     private void setPointAFromCurrent() {
         if (mediaPlayer == null) return;
         pointA = mediaPlayer.getCurrentTime();
@@ -357,10 +349,10 @@ public class VideoLoopPlayer extends Application {
 
     private void updatePlayButton() {
         if (mediaPlayer == null) {
-            playPauseButton.setText("▶ Play");
+            playPauseButton.setText("▶");
             return;
         }
-        playPauseButton.setText(mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING ? "⏸ Pause" : "▶ Play");
+        playPauseButton.setText(mediaPlayer.getStatus() == MediaPlayer.Status.PLAYING ? "⏸" : "▶");
     }
 
     private void showMediaError(Throwable error) {
@@ -374,12 +366,6 @@ public class VideoLoopPlayer extends Application {
 
         if (e.getCode() == KeyCode.SPACE) {
             togglePlayPause();
-            e.consume();
-        } else if (e.getCode() == KeyCode.LEFT) {
-            jumpSeconds(-5);
-            e.consume();
-        } else if (e.getCode() == KeyCode.RIGHT) {
-            jumpSeconds(5);
             e.consume();
         }
     }
