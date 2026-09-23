@@ -269,7 +269,11 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void styleLabels(Pane pane) {
-        pane.lookupAll(".label").forEach(n -> n.setStyle("-fx-text-fill: #d6d9df;"));
+        pane.lookupAll(".label").forEach(n -> {
+            if (n != aMarkerLabel && n != bMarkerLabel) {
+                n.setStyle("-fx-text-fill: #d6d9df;");
+            }
+        });
     }
 
     private void openVideo(Stage stage) {
