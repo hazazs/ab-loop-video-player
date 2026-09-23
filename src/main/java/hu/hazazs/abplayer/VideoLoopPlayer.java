@@ -260,7 +260,7 @@ public class VideoLoopPlayer extends Application {
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
                 if (!bypassLoopUntilEnd
                         && pointB.greaterThan(pointA)
-                        && newTime.greaterThanOrEqualTo(pointB)) {
+                        && newTime.greaterThan(pointB)) {
                     exactPausedSeekMillis = null;
                     atVideoEnd = false;
 
@@ -280,8 +280,6 @@ public class VideoLoopPlayer extends Application {
                     }
                     return;
                 }
-
-                atVideoEnd = false;
 
                 if (exactPausedSeekMillis != null
                         && mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING
@@ -587,6 +585,7 @@ public class VideoLoopPlayer extends Application {
             exactPausedSeekMillis = null;
 
             Duration start = Duration.ZERO;
+            mediaPlayer.stop();
             mediaPlayer.seek(start);
             seekSlider.setValue(0);
             currentTimeLabel.setText(formatDuration(start));
@@ -601,7 +600,7 @@ public class VideoLoopPlayer extends Application {
 
         if (!bypassLoopUntilEnd
                 && pointB.greaterThan(pointA)
-                && mediaPlayer.getCurrentTime().greaterThanOrEqualTo(pointB)) {
+                && mediaPlayer.getCurrentTime().greaterThan(pointB)) {
             mediaPlayer.seek(pointA);
             seekSlider.setValue(pointA.toMillis());
             currentTimeLabel.setText(formatDuration(pointA));
@@ -718,7 +717,7 @@ public class VideoLoopPlayer extends Application {
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = logicalCurrentTime();
-        if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
+        if (current.lessThan(pointA) || current.greaterThan(pointB)) {
             mediaPlayer.seek(pointA);
 
             if (mediaPlayer.getStatus() != MediaPlayer.Status.PLAYING) {
