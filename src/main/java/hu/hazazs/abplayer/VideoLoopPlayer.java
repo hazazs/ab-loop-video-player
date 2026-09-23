@@ -54,6 +54,7 @@ public class VideoLoopPlayer extends Application {
     private Duration pointB = Duration.ZERO;
     private Duration mediaDuration = Duration.ZERO;
     private boolean userSeeking;
+    private boolean bypassLoopUntilEnd;
 
     private final PauseTransition singleClickDelay = new PauseTransition(Duration.millis(220));
 
@@ -238,6 +239,7 @@ public class VideoLoopPlayer extends Application {
                 mediaDuration = mediaPlayer.getTotalDuration();
                 pointA = Duration.ZERO;
                 pointB = mediaDuration;
+                bypassLoopUntilEnd = false;
                 aField.setText(formatDuration(pointA));
                 bField.setText(formatDuration(pointB));
                 totalTimeLabel.setText(formatDuration(mediaDuration));
@@ -252,7 +254,8 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.currentTimeProperty().addListener((obs, oldTime, newTime) -> {
-                if (pointB.greaterThan(pointA)
+                if (!bypassLoopUntilEnd
+                        && pointB.greaterThan(pointA)
                         && newTime.greaterThanOrEqualTo(pointB)) {
                     if (!userSeeking) {
                         seekSlider.setValue(pointB.toMillis());
@@ -278,7 +281,7 @@ public class VideoLoopPlayer extends Application {
             });
 
             mediaPlayer.setOnEndOfMedia(() -> {
-                if (pointB.greaterThan(pointA)) {
+                if (!bypassLoopUntilEnd && pointB.greaterThan(pointA)) {
                     mediaPlayer.seek(pointA);
                     seekSlider.setValue(pointA.toMillis());
                     currentTimeLabel.setText(formatDuration(pointA));
@@ -333,7 +336,7 @@ public class VideoLoopPlayer extends Application {
 
         seekSlider.setOnMouseReleased(e -> {
             if (mediaPlayer != null) {
-                mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
+                seekFromProgressBar(Duration.millis(seekSlider.getValue()));
             }
             userSeeking = false;
 
@@ -347,9 +350,14 @@ public class VideoLoopPlayer extends Application {
         seekSlider.valueChangingProperty().addListener((obs, was, changing) -> {
             userSeeking = changing;
             if (!changing && mediaPlayer != null) {
-                mediaPlayer.seek(Duration.millis(seekSlider.getValue()));
+                seekFromProgressBar(Duration.millis(seekSlider.getValue()));
             }
         });
+    }
+
+    private void seekFromProgressBar(Duration target) {
+        bypassLoopUntilEnd = target.greaterThan(pointB);
+        mediaPlayer.seek(target);
     }
 
     private Duration hoverTimeAt(double mouseX) {
@@ -543,7 +551,8 @@ public class VideoLoopPlayer extends Application {
         if (status == MediaPlayer.Status.PLAYING) {
             mediaPlayer.pause();
         } else {
-            if (pointB.greaterThan(pointA)
+            if (!bypassLoopUntilEnd
+                    && pointB.greaterThan(pointA)
                     && mediaPlayer.getCurrentTime().greaterThanOrEqualTo(pointB)) {
                 mediaPlayer.seek(pointA);
             }
@@ -617,6 +626,7 @@ public class VideoLoopPlayer extends Application {
     private void validateLoopRange() {
         if (mediaPlayer == null) return;
 
+        bypassLoopUntilEnd = false;
         seekSlider.setValue(mediaPlayer.getCurrentTime().toMillis());
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
