@@ -1,6 +1,7 @@
 package hu.hazazs.abplayer;
 
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -11,6 +12,7 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
 import javafx.scene.media.MediaView;
@@ -34,6 +36,9 @@ public class VideoLoopPlayer extends Application {
     private final MediaView mediaView = new MediaView();
 
     private final Slider seekSlider = new Slider(0, 1, 0);
+    private final Pane seekMarkerOverlay = new Pane();
+    private final VBox aMarker = createSeekMarker("A", "#ffb300");
+    private final VBox bMarker = createSeekMarker("B", "#00c853");
     private final Slider volumeSlider = new Slider(0, 100, 75);
     private final Label currentTimeLabel = new Label("00:00:00.000");
     private final Label totalTimeLabel = new Label("00:00:00.000");
@@ -53,7 +58,11 @@ public class VideoLoopPlayer extends Application {
         setWindowIcon(stage);
 
         BorderPane root = new BorderPane();
-        root.setStyle("-fx-background-color: #17191d;");
+        root.setStyle(
+                "-fx-background-color: #17191d;" +
+                "-fx-focus-color: transparent;" +
+                "-fx-faint-focus-color: transparent;"
+        );
 
         StackPane videoPane = new StackPane(mediaView);
         videoPane.setStyle("-fx-background-color: black;");
@@ -85,9 +94,20 @@ public class VideoLoopPlayer extends Application {
 
         seekSlider.setDisable(true);
         seekSlider.setMaxWidth(Double.MAX_VALUE);
-        HBox.setHgrow(seekSlider, Priority.ALWAYS);
 
-        HBox timeRow = new HBox(8, currentTimeLabel, seekSlider, totalTimeLabel);
+        seekMarkerOverlay.setMouseTransparent(true);
+        seekMarkerOverlay.getChildren().addAll(aMarker, bMarker);
+        aMarker.setVisible(false);
+        bMarker.setVisible(false);
+
+        StackPane seekBarPane = new StackPane(seekSlider, seekMarkerOverlay);
+        seekBarPane.setMinWidth(0);
+        seekBarPane.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(seekBarPane, Priority.ALWAYS);
+        seekBarPane.widthProperty().addListener((obs, oldWidth, newWidth) -> updateLoopMarkers());
+        seekBarPane.heightProperty().addListener((obs, oldHeight, newHeight) -> updateLoopMarkers());
+
+        HBox timeRow = new HBox(8, currentTimeLabel, seekBarPane, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
 
         volumeSlider.setPrefWidth(120);
@@ -149,16 +169,20 @@ public class VideoLoopPlayer extends Application {
 
         installSeekBehavior();
 
-        Scene scene = new Scene(root, 1000, 700);
+        Scene scene = new Scene(root, 1000, 700, Color.BLACK);
         scene.addEventFilter(KeyEvent.KEY_PRESSED, this::handleKeyboard);
         scene.addEventFilter(ScrollEvent.SCROLL, this::handleVolumeScroll);
         stage.setScene(scene);
         stage.setMinWidth(760);
         stage.setMinHeight(560);
 
-        // Maximized fills the usable desktop while keeping the taskbar visible.
+        // Show the already-maximized, already-black scene without a white startup flash.
+        stage.setOpacity(0);
         stage.setMaximized(true);
         stage.show();
+        root.applyCss();
+        root.layout();
+        Platform.runLater(() -> stage.setOpacity(1));
 
         stage.setOnCloseRequest(e -> disposePlayer());
     }
@@ -194,6 +218,8 @@ public class VideoLoopPlayer extends Application {
 
             fileLabel.setText(file.getName());
             seekSlider.setDisable(true);
+            aMarker.setVisible(false);
+            bMarker.setVisible(false);
 
             mediaPlayer.setOnReady(() -> {
                 mediaDuration = mediaPlayer.getTotalDuration();
@@ -206,6 +232,7 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setMax(Math.max(1, mediaDuration.toMillis()));
                 seekSlider.setValue(0);
                 seekSlider.setDisable(false);
+                updateLoopMarkers();
                 mediaPlayer.play();
             });
 
@@ -318,6 +345,59 @@ public class VideoLoopPlayer extends Application {
         field.setMaxWidth(width);
     }
 
+    private VBox createSeekMarker(String text, String color) {
+        Label label = new Label(text);
+        label.setStyle(
+                "-fx-text-fill: white;" +
+                "-fx-font-size: 9px;" +
+                "-fx-font-weight: bold;" +
+                "-fx-background-color: rgba(0, 0, 0, 0.75);" +
+                "-fx-padding: 0 2 0 2;"
+        );
+
+        Region line = new Region();
+        line.setMinSize(2, 11);
+        line.setPrefSize(2, 11);
+        line.setMaxSize(2, 11);
+        line.setStyle("-fx-background-color: " + color + ";");
+
+        VBox marker = new VBox(0, label, line);
+        marker.setAlignment(Pos.TOP_CENTER);
+        marker.setMouseTransparent(true);
+        return marker;
+    }
+
+    private void updateLoopMarkers() {
+        if (mediaDuration == null
+                || mediaDuration.isUnknown()
+                || mediaDuration.isIndefinite()
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)
+                || seekMarkerOverlay.getWidth() <= 0) {
+            aMarker.setVisible(false);
+            bMarker.setVisible(false);
+            return;
+        }
+
+        positionSeekMarker(aMarker, pointA);
+        positionSeekMarker(bMarker, pointB);
+    }
+
+    private void positionSeekMarker(VBox marker, Duration time) {
+        marker.applyCss();
+        marker.autosize();
+
+        double durationMillis = mediaDuration.toMillis();
+        double ratio = Math.max(0, Math.min(1, time.toMillis() / durationMillis));
+        double overlayWidth = seekMarkerOverlay.getWidth();
+        double markerWidth = Math.max(1, marker.prefWidth(-1));
+        double x = ratio * overlayWidth - markerWidth / 2.0;
+        x = Math.max(0, Math.min(x, overlayWidth - markerWidth));
+
+        double y = Math.max(0, (seekMarkerOverlay.getHeight() - marker.prefHeight(-1)) / 2.0);
+        marker.relocate(x, y);
+        marker.setVisible(true);
+    }
+
     private void togglePlayPause() {
         if (mediaPlayer == null) return;
 
@@ -399,6 +479,7 @@ public class VideoLoopPlayer extends Application {
     private void validateLoopRange() {
         if (mediaPlayer == null) return;
 
+        updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = mediaPlayer.getCurrentTime();
         if (current.lessThan(pointA) || current.greaterThanOrEqualTo(pointB)) {
