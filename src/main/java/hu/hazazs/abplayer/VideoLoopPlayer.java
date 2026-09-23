@@ -638,9 +638,11 @@ public class VideoLoopPlayer extends Application {
     private void seekBySeconds(double seconds) {
         if (mediaPlayer == null || mediaDuration.isUnknown() || mediaDuration.isIndefinite()) return;
 
-        long baseMillis = exactPausedSeekMillis != null
-                ? exactPausedSeekMillis
-                : Math.round(mediaPlayer.getCurrentTime().toMillis());
+        // Use the slider thumb as the logical seek position. Immediately after
+        // restarting from the real end, JavaFX may still expose the old end
+        // timestamp through MediaPlayer#getCurrentTime(), while the thumb is
+        // already correctly reset to 00:00:00.000.
+        long baseMillis = Math.round(seekSlider.getValue());
 
         long deltaMillis = Math.round(seconds * 1000.0);
         long maxMillis = Math.round(mediaDuration.toMillis());
