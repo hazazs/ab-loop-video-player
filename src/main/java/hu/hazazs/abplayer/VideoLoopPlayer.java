@@ -33,6 +33,7 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Base64;
 import java.util.Locale;
 
@@ -43,6 +44,7 @@ public class VideoLoopPlayer extends Application {
 
     private MediaPlayer mediaPlayer;
     private File currentFile;
+    private Path ffmpegExecutable;
     private final MediaView mediaView = new MediaView();
 
     private final Slider seekSlider = new Slider(0, 1, 0);
@@ -1023,8 +1025,10 @@ public class VideoLoopPlayer extends Application {
                         endMillis
                 );
 
+                Path ffmpeg = resolveFfmpegExecutable();
+
                 ProcessBuilder processBuilder = new ProcessBuilder(
-                        "ffmpeg",
+                        ffmpeg.toString(),
                         "-hide_banner",
                         "-loglevel", "error",
                         "-y",
@@ -1079,7 +1083,7 @@ public class VideoLoopPlayer extends Application {
 
                     if (ex instanceof java.io.IOException
                             && message.toLowerCase(Locale.ROOT).contains("cannot run program")) {
-                        message = "FFmpeg was not found. Install FFmpeg and make sure ffmpeg.exe is on PATH.";
+                        message = "FFmpeg could not be started. The runnable Windows JAR should contain its own bundled ffmpeg.exe.";
                     }
 
                     showSaveResult(
@@ -1093,6 +1097,40 @@ public class VideoLoopPlayer extends Application {
 
         exportThread.setDaemon(true);
         exportThread.start();
+    }
+
+    private synchronized Path resolveFfmpegExecutable() throws Exception {
+        if (ffmpegExecutable != null && Files.isRegularFile(ffmpegExecutable)) {
+            return ffmpegExecutable;
+        }
+
+        try (InputStream bundledFfmpeg = getClass().getResourceAsStream("/ffmpeg.exe")) {
+            if (bundledFfmpeg != null) {
+                String localAppData = System.getenv("LOCALAPPDATA");
+                Path cacheDirectory = localAppData == null || localAppData.isBlank()
+                        ? Path.of(System.getProperty("java.io.tmpdir"), "ABLoopVideoPlayer")
+                        : Path.of(localAppData, "ABLoopVideoPlayer");
+
+                Files.createDirectories(cacheDirectory);
+                Path extractedFfmpeg = cacheDirectory.resolve("ffmpeg.exe");
+
+                if (!Files.isRegularFile(extractedFfmpeg)) {
+                    Files.copy(
+                            bundledFfmpeg,
+                            extractedFfmpeg,
+                            StandardCopyOption.REPLACE_EXISTING
+                    );
+                }
+
+                ffmpegExecutable = extractedFfmpeg;
+                return ffmpegExecutable;
+            }
+        }
+
+        // Development fallback: allow a locally installed FFmpeg when running
+        // from Maven/IDE builds that do not contain the bundled Windows binary.
+        ffmpegExecutable = Path.of("ffmpeg");
+        return ffmpegExecutable;
     }
 
     private Path nextAvailableOutputFile(
