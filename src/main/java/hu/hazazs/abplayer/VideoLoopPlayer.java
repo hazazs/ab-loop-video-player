@@ -180,20 +180,26 @@ public class VideoLoopPlayer extends Application {
             if (was && !is) applyTypedPoints();
         });
 
-        Region aRowSpacer = new Region();
-        HBox.setHgrow(aRowSpacer, Priority.ALWAYS);
-
-        VBox volumeControls = new VBox(8, volumeSlider, saveButton);
-        volumeControls.setAlignment(Pos.CENTER);
-
-        HBox aRow = new HBox(8, new Label("A"), aField, setAButton, aRowSpacer, volumeControls);
+        HBox aRow = new HBox(8, new Label("A"), aField, setAButton);
         aRow.setAlignment(Pos.CENTER_LEFT);
 
         HBox bRow = new HBox(8, new Label("B"), bField, setBButton);
         bRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox controls = new VBox(8, timeRow, aRow, bRow);
-        VBox.setMargin(aRow, new Insets(5, 0, 0, 0));
+        VBox abRows = new VBox(8, aRow, bRow);
+        abRows.setAlignment(Pos.CENTER_LEFT);
+
+        Region lowerSpacer = new Region();
+        HBox.setHgrow(lowerSpacer, Priority.ALWAYS);
+
+        VBox volumeControls = new VBox(8, volumeSlider, saveButton);
+        volumeControls.setAlignment(Pos.CENTER);
+
+        HBox lowerControls = new HBox(8, abRows, lowerSpacer, volumeControls);
+        lowerControls.setAlignment(Pos.TOP_LEFT);
+
+        VBox controls = new VBox(8, timeRow, lowerControls);
+        VBox.setMargin(lowerControls, new Insets(5, 0, 0, 0));
         controls.setPadding(new Insets(10, 12, 12, 12));
         controls.setStyle(
                 "-fx-background-color: #22252b;" +
