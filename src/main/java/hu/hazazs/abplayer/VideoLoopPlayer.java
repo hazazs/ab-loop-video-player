@@ -31,6 +31,8 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Base64;
 import java.util.Locale;
 
@@ -40,6 +42,7 @@ public class VideoLoopPlayer extends Application {
     private static final double MAX_NATURAL_PLAYBACK_STEP_MILLIS = 3000.0;
 
     private MediaPlayer mediaPlayer;
+    private File currentFile;
     private final MediaView mediaView = new MediaView();
 
     private final Slider seekSlider = new Slider(0, 1, 0);
@@ -54,6 +57,7 @@ public class VideoLoopPlayer extends Application {
     private final TextField bField = new TextField("00:00:00.000");
     private final Button setAButton = new Button("Set");
     private final Button setBButton = new Button("Set");
+    private final Button saveButton = new Button("Save");
 
     private Duration pointA = Duration.ZERO;
     private Duration pointB = Duration.ZERO;
@@ -152,12 +156,15 @@ public class VideoLoopPlayer extends Application {
 
         configureStaticButton(setAButton);
         configureStaticButton(setBButton);
+        configureStaticButton(saveButton);
 
         setAButton.setOnAction(e -> setPointAFromCurrent());
         setBButton.setOnAction(e -> setPointBFromCurrent());
+        saveButton.setOnAction(e -> saveSelection());
 
         setAButton.setDisable(true);
         setBButton.setDisable(true);
+        saveButton.setDisable(true);
         seekSlider.valueProperty().addListener((obs, oldValue, newValue) ->
                 updateSetButtonAvailability(newValue.doubleValue())
         );
@@ -177,7 +184,7 @@ public class VideoLoopPlayer extends Application {
         HBox aRow = new HBox(8, new Label("A"), aField, setAButton, aRowSpacer, volumeSlider);
         aRow.setAlignment(Pos.CENTER_LEFT);
 
-        HBox bRow = new HBox(8, new Label("B"), bField, setBButton);
+        HBox bRow = new HBox(8, new Label("B"), bField, setBButton, saveButton);
         bRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox controls = new VBox(8, timeRow, aRow, bRow);
@@ -239,6 +246,7 @@ public class VideoLoopPlayer extends Application {
         if (file == null) return;
 
         disposePlayer();
+        currentFile = file;
 
         try {
             Media media = new Media(file.toURI().toString());
@@ -268,6 +276,7 @@ public class VideoLoopPlayer extends Application {
                 seekSlider.setValue(pointA.toMillis());
                 seekSlider.setDisable(false);
                 updateSetButtonAvailability(seekSlider.getValue());
+                updateSaveButtonAvailability();
                 seekSlider.applyCss();
                 seekSlider.layout();
                 updateLoopMarkers();
@@ -971,6 +980,7 @@ public class VideoLoopPlayer extends Application {
         atVideoEnd = false;
         seekSlider.setValue(logicalCurrentTime().toMillis());
         updateSetButtonAvailability(seekSlider.getValue());
+        updateSaveButtonAvailability();
         updateLoopMarkers();
         if (!pointB.greaterThan(pointA)) return;
         Duration current = logicalCurrentTime();
@@ -984,6 +994,180 @@ public class VideoLoopPlayer extends Application {
             seekSlider.setValue(pointA.toMillis());
             currentTimeLabel.setText(formatDuration(pointA));
         }
+    }
+
+    private void saveSelection() {
+        if (currentFile == null || mediaPlayer == null || !pointB.greaterThan(pointA)) return;
+
+        File source = currentFile;
+        long startMillis = Math.max(0, Math.round(pointA.toMillis()));
+        long endMillis = Math.min(
+                Math.round(mediaDuration.toMillis()),
+                Math.round(pointB.toMillis())
+        );
+        long durationMillis = endMillis - startMillis;
+        if (durationMillis <= 0) return;
+
+        saveButton.setDisable(true);
+        saveButton.setText("Saving...");
+
+        Thread exportThread = new Thread(() -> {
+            try {
+                Path outputDirectory = Path.of("D:\\downloadz");
+                Files.createDirectories(outputDirectory);
+
+                Path outputFile = nextAvailableOutputFile(
+                        outputDirectory,
+                        source,
+                        startMillis,
+                        endMillis
+                );
+
+                ProcessBuilder processBuilder = new ProcessBuilder(
+                        "ffmpeg",
+                        "-hide_banner",
+                        "-loglevel", "error",
+                        "-y",
+                        "-i", source.getAbsolutePath(),
+                        "-ss", ffmpegTime(startMillis),
+                        "-t", ffmpegTime(durationMillis),
+                        "-map", "0:v:0",
+                        "-map", "0:a?",
+                        "-c:v", "libx264",
+                        "-preset", "medium",
+                        "-crf", "18",
+                        "-c:a", "aac",
+                        "-b:a", "192k",
+                        "-movflags", "+faststart",
+                        outputFile.toString()
+                );
+                processBuilder.redirectErrorStream(true);
+
+                Process process = processBuilder.start();
+                String processOutput = new String(
+                        process.getInputStream().readAllBytes(),
+                        StandardCharsets.UTF_8
+                );
+                int exitCode = process.waitFor();
+
+                if (exitCode != 0) {
+                    throw new IllegalStateException(
+                            processOutput.isBlank()
+                                    ? "FFmpeg exited with code " + exitCode
+                                    : processOutput.trim()
+                    );
+                }
+
+                Platform.runLater(() -> {
+                    saveButton.setText("Save");
+                    updateSaveButtonAvailability();
+                    showSaveResult(
+                            Alert.AlertType.INFORMATION,
+                            "Saved",
+                            "Saved to:\n" + outputFile
+                    );
+                });
+            } catch (Exception ex) {
+                Platform.runLater(() -> {
+                    saveButton.setText("Save");
+                    updateSaveButtonAvailability();
+
+                    String message = ex.getMessage();
+                    if (message == null || message.isBlank()) {
+                        message = ex.getClass().getSimpleName();
+                    }
+
+                    if (ex instanceof java.io.IOException
+                            && message.toLowerCase(Locale.ROOT).contains("cannot run program")) {
+                        message = "FFmpeg was not found. Install FFmpeg and make sure ffmpeg.exe is on PATH.";
+                    }
+
+                    showSaveResult(
+                            Alert.AlertType.ERROR,
+                            "Save failed",
+                            message
+                    );
+                });
+            }
+        }, "ab-selection-export");
+
+        exportThread.setDaemon(true);
+        exportThread.start();
+    }
+
+    private Path nextAvailableOutputFile(
+            Path directory,
+            File source,
+            long startMillis,
+            long endMillis
+    ) {
+        String fileName = source.getName();
+        int extensionIndex = fileName.lastIndexOf('.');
+        String baseName = extensionIndex > 0
+                ? fileName.substring(0, extensionIndex)
+                : fileName;
+
+        String selectionSuffix = "_AB_"
+                + fileNameTime(startMillis)
+                + "_"
+                + fileNameTime(endMillis);
+
+        Path candidate = directory.resolve(baseName + selectionSuffix + ".mp4");
+        int counter = 2;
+
+        while (Files.exists(candidate)) {
+            candidate = directory.resolve(
+                    baseName + selectionSuffix + "_" + counter + ".mp4"
+            );
+            counter++;
+        }
+
+        return candidate;
+    }
+
+    private String ffmpegTime(long millis) {
+        return String.format(
+                Locale.ROOT,
+                "%.3f",
+                millis / 1000.0
+        );
+    }
+
+    private String fileNameTime(long millis) {
+        long totalSeconds = millis / 1000;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
+        long milliseconds = millis % 1000;
+
+        return String.format(
+                Locale.ROOT,
+                "%02d-%02d-%02d.%03d",
+                hours,
+                minutes,
+                seconds,
+                milliseconds
+        );
+    }
+
+    private void updateSaveButtonAvailability() {
+        saveButton.setDisable(
+                currentFile == null
+                        || mediaPlayer == null
+                        || mediaDuration == null
+                        || mediaDuration.isUnknown()
+                        || mediaDuration.isIndefinite()
+                        || !pointB.greaterThan(pointA)
+                        || "Saving...".equals(saveButton.getText())
+        );
+    }
+
+    private void showSaveResult(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.show();
     }
 
     private void showMediaError(Throwable error) {
