@@ -183,10 +183,13 @@ public class VideoLoopPlayer extends Application {
         Region aRowSpacer = new Region();
         HBox.setHgrow(aRowSpacer, Priority.ALWAYS);
 
-        HBox aRow = new HBox(8, new Label("A"), aField, setAButton, aRowSpacer, volumeSlider);
+        VBox volumeControls = new VBox(8, volumeSlider, saveButton);
+        volumeControls.setAlignment(Pos.CENTER);
+
+        HBox aRow = new HBox(8, new Label("A"), aField, setAButton, aRowSpacer, volumeControls);
         aRow.setAlignment(Pos.CENTER_LEFT);
 
-        HBox bRow = new HBox(8, new Label("B"), bField, setBButton, saveButton);
+        HBox bRow = new HBox(8, new Label("B"), bField, setBButton);
         bRow.setAlignment(Pos.CENTER_LEFT);
 
         VBox controls = new VBox(8, timeRow, aRow, bRow);
