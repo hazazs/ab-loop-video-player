@@ -75,11 +75,12 @@ jobs:
             throw "Main-Class is missing or incorrect"
           }
 
+          $jarFullPath = (Resolve-Path $jar).Path
           $verifyDir = Join-Path $env:RUNNER_TEMP "verify-bundled-ffmpeg"
           New-Item -ItemType Directory -Path $verifyDir -Force | Out-Null
           Push-Location $verifyDir
           try {
-            & jar xf (Resolve-Path $jar) ffmpeg.exe
+            & jar xf $jarFullPath ffmpeg.exe
             & .\ffmpeg.exe -version
             if ($LASTEXITCODE -ne 0) {
               throw "Bundled ffmpeg.exe could not be executed"
