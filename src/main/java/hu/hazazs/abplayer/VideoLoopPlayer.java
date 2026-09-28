@@ -1076,14 +1076,19 @@ public class VideoLoopPlayer extends Application {
                     saveButton.setText("Save");
                     updateSaveButtonAvailability();
 
-                    String message = ex.getMessage();
-                    if (message == null || message.isBlank()) {
-                        message = ex.getClass().getSimpleName();
+                    String detail = ex.getMessage();
+                    if (detail == null || detail.isBlank()) {
+                        detail = ex.getClass().getSimpleName();
                     }
 
-                    if (ex instanceof java.io.IOException
-                            && message.toLowerCase(Locale.ROOT).contains("cannot run program")) {
-                        message = "FFmpeg could not be started. The runnable Windows JAR should contain its own bundled ffmpeg.exe.";
+                    String message = detail;
+                    if (ex instanceof java.io.IOException) {
+                        String executable = ffmpegExecutable == null
+                                ? "not extracted"
+                                : ffmpegExecutable.toAbsolutePath().toString();
+                        message = "Could not start bundled FFmpeg.\n\n"
+                                + "Executable: " + executable + "\n\n"
+                                + "Windows/Java error: " + detail;
                     }
 
                     showSaveResult(
@@ -1104,33 +1109,81 @@ public class VideoLoopPlayer extends Application {
             return ffmpegExecutable;
         }
 
+        Path toolDirectory = Path.of("D:\\downloadz", ".ab-loop-video-player");
+        Files.createDirectories(toolDirectory);
+
+        Path extractedFfmpeg = toolDirectory.resolve("ffmpeg.exe");
+        Path temporaryFfmpeg = toolDirectory.resolve("ffmpeg.exe.new");
+
         try (InputStream bundledFfmpeg = getClass().getResourceAsStream("/ffmpeg.exe")) {
-            if (bundledFfmpeg != null) {
-                String localAppData = System.getenv("LOCALAPPDATA");
-                Path cacheDirectory = localAppData == null || localAppData.isBlank()
-                        ? Path.of(System.getProperty("java.io.tmpdir"), "ABLoopVideoPlayer")
-                        : Path.of(localAppData, "ABLoopVideoPlayer");
-
-                Files.createDirectories(cacheDirectory);
-                Path extractedFfmpeg = cacheDirectory.resolve("ffmpeg.exe");
-
-                if (!Files.isRegularFile(extractedFfmpeg)) {
-                    Files.copy(
-                            bundledFfmpeg,
-                            extractedFfmpeg,
-                            StandardCopyOption.REPLACE_EXISTING
-                    );
-                }
-
-                ffmpegExecutable = extractedFfmpeg;
-                return ffmpegExecutable;
+            if (bundledFfmpeg == null) {
+                throw new IllegalStateException(
+                        "The runnable JAR does not contain /ffmpeg.exe."
+                );
             }
+
+            // Always refresh the cached executable. This prevents an incomplete
+            // or stale extraction from an older build from being reused.
+            Files.copy(
+                    bundledFfmpeg,
+                    temporaryFfmpeg,
+                    StandardCopyOption.REPLACE_EXISTING
+            );
         }
 
-        // Development fallback: allow a locally installed FFmpeg when running
-        // from Maven/IDE builds that do not contain the bundled Windows binary.
-        ffmpegExecutable = Path.of("ffmpeg");
+        validateBundledFfmpeg(temporaryFfmpeg);
+
+        Files.move(
+                temporaryFfmpeg,
+                extractedFfmpeg,
+                StandardCopyOption.REPLACE_EXISTING
+        );
+
+        ffmpegExecutable = extractedFfmpeg.toAbsolutePath();
+        verifyFfmpegCanStart(ffmpegExecutable);
         return ffmpegExecutable;
+    }
+
+    private void validateBundledFfmpeg(Path executable) throws Exception {
+        long size = Files.size(executable);
+        if (size < 1_000_000) {
+            throw new IllegalStateException(
+                    "Bundled ffmpeg.exe is unexpectedly small: " + size + " bytes."
+            );
+        }
+
+        try (InputStream input = Files.newInputStream(executable)) {
+            int first = input.read();
+            int second = input.read();
+            if (first != 'M' || second != 'Z') {
+                throw new IllegalStateException(
+                        "Bundled ffmpeg.exe is not a valid Windows executable."
+                );
+            }
+        }
+    }
+
+    private void verifyFfmpegCanStart(Path executable) throws Exception {
+        Process process = new ProcessBuilder(
+                executable.toString(),
+                "-version"
+        )
+                .redirectErrorStream(true)
+                .start();
+
+        String output = new String(
+                process.getInputStream().readAllBytes(),
+                StandardCharsets.UTF_8
+        );
+        int exitCode = process.waitFor();
+
+        if (exitCode != 0) {
+            throw new IllegalStateException(
+                    output.isBlank()
+                            ? "Bundled FFmpeg test exited with code " + exitCode
+                            : output.trim()
+            );
+        }
     }
 
     private Path nextAvailableOutputFile(
