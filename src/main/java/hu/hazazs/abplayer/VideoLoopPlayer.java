@@ -160,8 +160,14 @@ public class VideoLoopPlayer extends Application {
         configureStaticButton(setBButton);
         configureStaticButton(saveButton);
 
-        setAButton.setOnAction(e -> setPointAFromField());
-        setBButton.setOnAction(e -> setPointBFromField());
+        setAButton.setOnAction(e -> {
+            setPointAFromField();
+            videoPane.requestFocus();
+        });
+        setBButton.setOnAction(e -> {
+            setPointBFromField();
+            videoPane.requestFocus();
+        });
         saveButton.setOnAction(e -> saveSelection());
 
         setAButton.setDisable(true);
