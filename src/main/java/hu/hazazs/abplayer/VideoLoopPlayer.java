@@ -160,25 +160,13 @@ public class VideoLoopPlayer extends Application {
         configureStaticButton(setBButton);
         configureStaticButton(saveButton);
 
-        setAButton.setOnAction(e -> setPointAFromCurrent());
-        setBButton.setOnAction(e -> setPointBFromCurrent());
+        setAButton.setOnAction(e -> setPointAFromField());
+        setBButton.setOnAction(e -> setPointBFromField());
         saveButton.setOnAction(e -> saveSelection());
 
         setAButton.setDisable(true);
         setBButton.setDisable(true);
         saveButton.setDisable(true);
-        seekSlider.valueProperty().addListener((obs, oldValue, newValue) ->
-                updateSetButtonAvailability(newValue.doubleValue())
-        );
-
-        aField.setOnAction(e -> applyTypedPoints());
-        bField.setOnAction(e -> applyTypedPoints());
-        aField.focusedProperty().addListener((obs, was, is) -> {
-            if (was && !is) applyTypedPoints();
-        });
-        bField.focusedProperty().addListener((obs, was, is) -> {
-            if (was && !is) applyTypedPoints();
-        });
 
         HBox aRow = new HBox(8, new Label("A"), aField, setAButton);
         aRow.setAlignment(Pos.CENTER_LEFT);
@@ -597,15 +585,12 @@ public class VideoLoopPlayer extends Application {
 
             long candidateMillis = Math.round(candidate.toMillis());
             long maxMillis = Math.round(mediaDuration.toMillis());
+            candidateMillis = Math.max(0, Math.min(candidateMillis, maxMillis));
 
             if (isPointA) {
-                long latestA = Math.max(0, Math.round(pointB.toMillis()) - 1);
-                candidateMillis = Math.max(0, Math.min(candidateMillis, latestA));
                 pointA = Duration.millis(candidateMillis);
                 aField.setText(formatDuration(pointA));
             } else {
-                long earliestB = Math.min(maxMillis, Math.round(pointA.toMillis()) + 1);
-                candidateMillis = Math.max(earliestB, Math.min(candidateMillis, maxMillis));
                 pointB = Duration.millis(candidateMillis);
                 bField.setText(formatDuration(pointB));
             }
@@ -613,6 +598,7 @@ public class VideoLoopPlayer extends Application {
             bypassLoopUntilEnd = false;
             atVideoEnd = false;
             updateSetButtonAvailability(seekSlider.getValue());
+            updateSaveButtonAvailability();
             updateLoopMarkers();
             e.consume();
         });
@@ -934,48 +920,53 @@ public class VideoLoopPlayer extends Application {
     private void setPointAFromCurrent() {
         if (mediaPlayer == null) return;
 
-        Duration candidate = logicalCurrentTime();
-        if (pointB.greaterThan(candidate)) {
-            pointA = candidate;
-            aField.setText(formatDuration(pointA));
-            validateLoopRange();
-        }
+        pointA = roundedMillis(logicalCurrentTime());
+        aField.setText(formatDuration(pointA));
+        validateLoopRange();
     }
 
     private void setPointBFromCurrent() {
         if (mediaPlayer == null) return;
 
-        Duration candidate = logicalCurrentTime();
-        if (candidate.greaterThan(pointA)) {
-            pointB = candidate;
-            bField.setText(formatDuration(pointB));
-            validateLoopRange();
-        }
+        pointB = roundedMillis(logicalCurrentTime());
+        bField.setText(formatDuration(pointB));
+        validateLoopRange();
     }
 
-    private void applyTypedPoints() {
+    private void setPointAFromField() {
         if (mediaPlayer == null) return;
 
         try {
-            Duration a = parseDuration(aField.getText());
-            Duration b = parseDuration(bField.getText());
-            a = clamp(a, Duration.ZERO, mediaDuration);
-            b = clamp(b, Duration.ZERO, mediaDuration);
-            if (!b.greaterThan(a)) {
-                aField.setText(formatDuration(pointA));
-                bField.setText(formatDuration(pointB));
-                return;
-            }
-
-            pointA = a;
-            pointB = b;
+            pointA = roundedMillis(clamp(
+                    parseDuration(aField.getText()),
+                    Duration.ZERO,
+                    mediaDuration
+            ));
             aField.setText(formatDuration(pointA));
-            bField.setText(formatDuration(pointB));
             validateLoopRange();
         } catch (IllegalArgumentException ex) {
             aField.setText(formatDuration(pointA));
+        }
+    }
+
+    private void setPointBFromField() {
+        if (mediaPlayer == null) return;
+
+        try {
+            pointB = roundedMillis(clamp(
+                    parseDuration(bField.getText()),
+                    Duration.ZERO,
+                    mediaDuration
+            ));
+            bField.setText(formatDuration(pointB));
+            validateLoopRange();
+        } catch (IllegalArgumentException ex) {
             bField.setText(formatDuration(pointB));
         }
+    }
+
+    private Duration roundedMillis(Duration value) {
+        return Duration.millis(Math.round(value.toMillis()));
     }
 
     private Duration logicalCurrentTime() {
@@ -1276,18 +1267,14 @@ public class VideoLoopPlayer extends Application {
     }
 
     private void updateSetButtonAvailability(double selectedMillis) {
-        if (mediaPlayer == null
+        boolean unavailable = mediaPlayer == null
                 || mediaDuration == null
                 || mediaDuration.isUnknown()
                 || mediaDuration.isIndefinite()
-                || mediaDuration.lessThanOrEqualTo(Duration.ZERO)) {
-            setAButton.setDisable(true);
-            setBButton.setDisable(true);
-            return;
-        }
+                || mediaDuration.lessThanOrEqualTo(Duration.ZERO);
 
-        setBButton.setDisable(selectedMillis <= pointA.toMillis());
-        setAButton.setDisable(selectedMillis >= pointB.toMillis());
+        setAButton.setDisable(unavailable);
+        setBButton.setDisable(unavailable);
     }
 
     private void changeVolume(double delta) {
@@ -1303,6 +1290,18 @@ public class VideoLoopPlayer extends Application {
 
     private void handleKeyboard(KeyEvent e) {
         if (e.getTarget() instanceof TextInputControl) return;
+
+        if (e.getCode() == KeyCode.A) {
+            setPointAFromCurrent();
+            e.consume();
+            return;
+        }
+
+        if (e.getCode() == KeyCode.B) {
+            setPointBFromCurrent();
+            e.consume();
+            return;
+        }
 
         if (e.getCode() == KeyCode.UP) {
             changeVolume(5);
