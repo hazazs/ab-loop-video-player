@@ -9,14 +9,19 @@ import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
+import javafx.scene.ImageCursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.image.Image;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.media.Media;
@@ -137,6 +142,14 @@ public class VideoLoopPlayer extends Application {
 
         configureTimestampLabel(currentTimeLabel, timestampLabelWidth, Pos.CENTER_LEFT);
         configureTimestampLabel(totalTimeLabel, timestampLabelWidth, Pos.CENTER_RIGHT);
+
+        currentTimeLabel.setCursor(createCopyCursor());
+        currentTimeLabel.setOnMouseClicked(e -> {
+            if (e.getButton() != MouseButton.PRIMARY) return;
+            copyCurrentTimestamp();
+            videoPane.requestFocus();
+            e.consume();
+        });
 
         HBox timeRow = new HBox(8, currentTimeLabel, seekBarPane, totalTimeLabel);
         timeRow.setAlignment(Pos.CENTER);
@@ -1283,6 +1296,46 @@ public class VideoLoopPlayer extends Application {
         setBButton.setDisable(unavailable);
     }
 
+    private void copyCurrentTimestamp() {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(currentTimeLabel.getText());
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    private Cursor createCopyCursor() {
+        int size = 24;
+        WritableImage image = new WritableImage(size, size);
+        PixelWriter pixels = image.getPixelWriter();
+
+        drawCopyCursorSheet(pixels, 7, 4, 12, 14);
+        drawCopyCursorSheet(pixels, 3, 8, 12, 14);
+
+        return new ImageCursor(image, 3, 8);
+    }
+
+    private void drawCopyCursorSheet(
+            PixelWriter pixels,
+            int x,
+            int y,
+            int width,
+            int height
+    ) {
+        for (int row = y; row < y + height; row++) {
+            for (int column = x; column < x + width; column++) {
+                boolean border = row == y
+                        || row == y + height - 1
+                        || column == x
+                        || column == x + width - 1;
+
+                pixels.setColor(
+                        column,
+                        row,
+                        border ? Color.BLACK : Color.WHITE
+                );
+            }
+        }
+    }
+
     private void changeVolume(double delta) {
         volumeSlider.setValue(Math.max(0, Math.min(100, volumeSlider.getValue() + delta)));
     }
@@ -1305,6 +1358,14 @@ public class VideoLoopPlayer extends Application {
 
         if (e.getCode() == KeyCode.B) {
             setPointBFromCurrent();
+            e.consume();
+            return;
+        }
+
+        if (e.getCode() == KeyCode.S) {
+            if (!saveButton.isDisabled()) {
+                saveButton.fire();
+            }
             e.consume();
             return;
         }
